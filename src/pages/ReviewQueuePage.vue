@@ -1,12 +1,33 @@
-﻿<template>
+<template>
   <section class="space-y-4">
     <header class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h2 class="text-lg font-semibold">待审核问答</h2>
-        <p class="text-sm text-slate-300">按后端契约字段展示并支持任务分配</p>
+        <p class="text-muted text-sm">按后端契约字段展示，并支持任务分配与人工补录。</p>
       </div>
-      <button class="rounded-md bg-sky-500 px-3 py-1.5 text-sm font-semibold text-black" @click="refresh">刷新</button>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          v-if="canCreateManual"
+          type="button"
+          data-testid="open-manual-qa-form"
+          class="btn btn-ghost btn-sm"
+          @click="showManualForm = !showManualForm"
+        >
+          {{ showManualForm ? '收起人工录入' : '人工添加问答对' }}
+        </button>
+        <button class="btn btn-primary btn-sm" @click="refresh">刷新</button>
+      </div>
     </header>
+
+    <ManualQaForm
+      v-if="showManualForm"
+      :loading="qaStore.loading"
+      :default-reviewer="authStore.username"
+      :create-ready="manualCreateReady"
+      @submit="createManualQA"
+      @cancel="showManualForm = false"
+    />
 
     <ReviewFilters
       :model-value="qaStore.filters"
@@ -26,22 +47,22 @@
       @claim="claimSelected"
     />
 
-    <p v-if="qaStore.error" class="rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+    <p v-if="qaStore.error" class="rounded-2xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)] px-3 py-2 text-sm text-[var(--color-danger)]">
       {{ qaStore.error }}
     </p>
 
-    <div class="flex items-center justify-between text-xs text-slate-300">
+    <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" class="size-4" :checked="allFilteredSelected" @change="toggleAll" />
-        当前筛选结果全选
+        <input type="checkbox" class="size-4" :checked="allVisibleSelected" @change="toggleAll" />
+        当前页全选
       </label>
-      <span>筛选结果 {{ filteredPending.length }} 条 / 总待审 {{ qaStore.pending.length }} 条</span>
+      <span class="text-muted">筛选结果 {{ filteredPending.length }} 条 / 总待审 {{ qaStore.pending.length }} 条</span>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2">
-      <article v-for="item in filteredPending" :key="item.id" class="rounded-lg border border-white/10 bg-black/20 p-3 hover:border-emerald-300/50">
-        <div class="flex items-start justify-between gap-2">
-          <label class="inline-flex items-center gap-2 text-xs text-slate-300">
+    <div class="grid gap-3 xl:grid-cols-2">
+      <article v-for="item in visiblePending" :key="item.id" class="surface-card rounded-[1.35rem] p-4">
+        <div class="flex items-start justify-between gap-3">
+          <label class="inline-flex items-center gap-2 text-xs">
             <input
               type="checkbox"
               class="size-4"
@@ -50,46 +71,70 @@
             />
             {{ item.id }}
           </label>
-          <span class="rounded-full border border-white/20 px-2 py-0.5 text-xs text-slate-200">
-            {{ item.reviewer || '未分配' }}
-          </span>
+          <span class="status-pill">{{ item.reviewer || '未分配' }}</span>
         </div>
 
-        <h3 class="mt-2 line-clamp-2 font-medium">{{ item.question }}</h3>
-        <p class="mt-2 text-xs text-slate-300">主题: {{ item.topics.join(' / ') }}</p>
-        <p class="text-xs text-slate-300">场景: {{ item.scenes.join(' / ') }}</p>
-        <p class="text-xs text-slate-300">置信度: {{ item.confidence.toFixed(2) }}</p>
+        <h3 class="mt-3 line-clamp-2 text-base font-medium">{{ item.question }}</h3>
+        <p class="text-muted mt-2 text-xs">主题: {{ item.topics.join(' / ') }}</p>
+        <p class="text-muted text-xs">场景: {{ item.scenes.join(' / ') }}</p>
+        <p class="text-muted text-xs">置信度: {{ item.confidence.toFixed(2) }}</p>
 
-        <div class="mt-3">
-          <RouterLink :to="`/reviews/${item.id}`" class="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black">
+        <div class="mt-4">
+          <RouterLink :to="`/reviews/${item.id}`" :data-testid="`open-review-${item.id}`" class="btn btn-success btn-sm ui-link-button">
             进入审核
           </RouterLink>
         </div>
       </article>
     </div>
 
-    <p v-if="!qaStore.loading && filteredPending.length === 0" class="text-sm text-slate-400">当前筛选下暂无待审核数据。</p>
+    <PaginationControls
+      :page="page"
+      :page-size="pageSize"
+      :total="filteredPending.length"
+      @update:page="page = $event"
+      @update:page-size="updatePageSize"
+    />
+
+    <p v-if="!qaStore.loading && filteredPending.length === 0" class="text-muted text-sm">当前筛选下暂无待审核数据。</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import ManualQaForm from '@/components/business/ManualQaForm.vue';
+import PaginationControls from '@/components/business/PaginationControls.vue';
 import ReviewFilters from '@/components/business/ReviewFilters.vue';
 import TaskAssignmentPanel from '@/components/business/TaskAssignmentPanel.vue';
+import { API_CONFIG } from '@/config';
 import { useAuthStore } from '@/stores/auth.store';
 import { useQAStore } from '@/stores/qa.store';
-import type { QAFilters } from '@/types/domain';
+import type { CreateQAPayload, QAFilters, QAPair } from '@/types/domain';
 
 const authStore = useAuthStore();
 const qaStore = useQAStore();
+const router = useRouter();
+
+const page = ref(1);
+const pageSize = ref(6);
+const showManualForm = ref(false);
 
 const filteredPending = computed(() => qaStore.filteredPending);
+const canCreateManual = computed(() => authStore.role !== 'viewer');
+const manualCreateReady = API_CONFIG.USE_MOCK || Boolean(API_CONFIG.ENDPOINTS.QA_CREATE);
 
-const allFilteredSelected = computed(() => {
-  if (filteredPending.value.length === 0) {
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredPending.value.length / pageSize.value)));
+
+const visiblePending = computed<QAPair[]>(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredPending.value.slice(start, start + pageSize.value);
+});
+
+const allVisibleSelected = computed(() => {
+  if (visiblePending.value.length === 0) {
     return false;
   }
-  return filteredPending.value.every((item) => qaStore.selectedIds.includes(item.id));
+  return visiblePending.value.every((item) => qaStore.selectedIds.includes(item.id));
 });
 
 const refresh = async (): Promise<void> => {
@@ -104,6 +149,11 @@ const resetFilters = (): void => {
   qaStore.resetFilters();
 };
 
+const updatePageSize = (value: number): void => {
+  pageSize.value = value;
+  page.value = 1;
+};
+
 const toggleOne = (id: string, event: Event): void => {
   const target = event.target as HTMLInputElement;
   qaStore.toggleSelection(id, target.checked);
@@ -112,10 +162,11 @@ const toggleOne = (id: string, event: Event): void => {
 const toggleAll = (event: Event): void => {
   const target = event.target as HTMLInputElement;
   if (target.checked) {
-    qaStore.setSelection(filteredPending.value.map((item) => item.id));
+    qaStore.setSelection(Array.from(new Set([...qaStore.selectedIds, ...visiblePending.value.map((item) => item.id)])));
     return;
   }
-  qaStore.clearSelection();
+  const currentPageIds = new Set(visiblePending.value.map((item) => item.id));
+  qaStore.setSelection(qaStore.selectedIds.filter((id) => !currentPageIds.has(id)));
 };
 
 const assignSelected = async (assignee: string): Promise<void> => {
@@ -128,6 +179,22 @@ const claimSelected = async (): Promise<void> => {
   }
   await qaStore.assignSelected(authStore.username);
 };
+
+const createManualQA = async (payload: CreateQAPayload): Promise<void> => {
+  const created = await qaStore.createManualQA(payload);
+  showManualForm.value = false;
+  page.value = 1;
+  await router.push(`/reviews/${created.id}`);
+};
+
+watch(
+  () => filteredPending.value.length,
+  () => {
+    if (page.value > totalPages.value) {
+      page.value = totalPages.value;
+    }
+  }
+);
 
 onMounted(async () => {
   qaStore.setMineUser(authStore.username);

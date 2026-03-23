@@ -1,6 +1,6 @@
-﻿import { defineStore } from 'pinia';
+import { defineStore } from 'pinia';
 import { qaApi } from '@/services/api/qa.api';
-import type { AssignPayload, QADetail, QAFilters, QAPair, QAStats, ReviewPayload } from '@/types/domain';
+import type { AssignPayload, CreateQAPayload, QADetail, QAFilters, QAPair, QAStats, ReviewPayload } from '@/types/domain';
 
 const defaultFilters = (): QAFilters => ({
   keyword: '',
@@ -148,7 +148,7 @@ export const useQAStore = defineStore('qa', {
       this.selectedIds = [];
     },
 
-    async fetchPending(limit = 100): Promise<void> {
+    async fetchPending(limit = 200): Promise<void> {
       this.loading = true;
       this.error = '';
       try {
@@ -189,6 +189,21 @@ export const useQAStore = defineStore('qa', {
       }
     },
 
+    async createManualQA(payload: CreateQAPayload): Promise<QADetail> {
+      this.loading = true;
+      this.error = '';
+      try {
+        const created = await qaApi.create(payload);
+        await Promise.all([this.fetchPending(), this.fetchStats()]);
+        return created;
+      } catch (error) {
+        this.error = (error as Error).message;
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
     async assignSelected(assignee: string): Promise<void> {
       if (this.selectedIds.length === 0) {
         return;
@@ -220,7 +235,7 @@ export const useQAStore = defineStore('qa', {
       }
     },
 
-    async fetchHistory(limit = 20): Promise<void> {
+    async fetchHistory(limit = 100): Promise<void> {
       try {
         this.history = await qaApi.history(limit);
       } catch (error) {

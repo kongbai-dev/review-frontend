@@ -1,13 +1,13 @@
-﻿<template>
-  <section class="rounded-lg border border-white/10 bg-black/20 p-3">
+<template>
+  <section class="surface-card rounded-[1.4rem] p-3">
     <div class="flex flex-wrap items-center gap-2">
-      <p class="text-xs text-slate-300">已选中 {{ selectedCount }} 条任务</p>
+      <p class="text-muted mr-2 text-xs">已选中 {{ selectedCount }} 条任务</p>
 
       <input
         v-model="assignee"
         list="assignee-options"
         placeholder="输入或选择审核员"
-        class="rounded-md border border-white/15 bg-black/30 px-2 py-1.5 text-sm"
+        class="form-control !w-[220px] !rounded-xl !py-2 text-sm"
       />
       <datalist id="assignee-options">
         <option v-for="item in assignees" :key="item" :value="item" />
@@ -15,7 +15,7 @@
 
       <button
         type="button"
-        class="rounded-md bg-indigo-400 px-3 py-1.5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        class="btn btn-primary btn-sm disabled:opacity-50"
         :disabled="!canAssign || selectedCount === 0 || !assignee.trim()"
         @click="emitAssign(assignee)"
       >
@@ -24,7 +24,7 @@
 
       <button
         type="button"
-        class="rounded-md bg-emerald-400 px-3 py-1.5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        class="btn btn-success btn-sm disabled:opacity-50"
         :disabled="!canClaim || selectedCount === 0"
         @click="$emit('claim')"
       >
@@ -33,7 +33,7 @@
 
       <button
         type="button"
-        class="rounded-md bg-amber-400 px-3 py-1.5 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        class="btn btn-warning btn-sm disabled:opacity-50"
         :disabled="!canAssign || selectedCount === 0"
         @click="emitAssign('')"
       >

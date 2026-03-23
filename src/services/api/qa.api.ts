@@ -1,7 +1,8 @@
-﻿import { API_CONFIG } from '@/config';
+import { API_CONFIG } from '@/config';
 import { http } from '@/services/http';
 import { mockQaApi } from '@/services/mock/review.mock';
-import type { AssignPayload, Fragment, QADetail, QAPair, QAStats, QAStatus, ReviewPayload } from '@/types/domain';
+import type { ListResponse } from '@/types/api';
+import type { AssignPayload, CreateQAPayload, Fragment, QADetail, QAPair, QAStats, QAStatus, ReviewPayload } from '@/types/domain';
 
 const DEFAULT_LIMIT = 20;
 
@@ -82,11 +83,26 @@ const parseQAPair = (raw: unknown, path = 'item'): QAPair => {
   };
 };
 
-const parsePendingResponse = (raw: unknown): QAPair[] => {
-  if (!Array.isArray(raw)) {
-    throw new Error('接口契约不匹配: GET /qa/pending 响应应为数组');
+const parseListResponse = (raw: unknown, endpoint: string, itemPath: string): ListResponse<QAPair> => {
+  if (Array.isArray(raw)) {
+    return {
+      items: raw.map((item, index) => parseQAPair(item, `${itemPath}[${index}]`)),
+      total: raw.length
+    };
   }
-  return raw.map((item, index) => parseQAPair(item, `pending[${index}]`));
+
+  if (!isObject(raw) || !Array.isArray(raw.items)) {
+    throw new Error(`接口契约不匹配: ${endpoint} 响应应为数组或 { items, total }`);
+  }
+
+  return {
+    items: raw.items.map((item, index) => parseQAPair(item, `${itemPath}[${index}]`)),
+    total: raw.total === undefined ? raw.items.length : expectNumber(raw.total, `${itemPath}.total`)
+  };
+};
+
+const parsePendingResponse = (raw: unknown): QAPair[] => {
+  return parseListResponse(raw, 'GET /qa/pending', 'pending').items;
 };
 
 const parseDetailResponse = (raw: unknown): QADetail => {
@@ -114,10 +130,7 @@ const parseStatsResponse = (raw: unknown): QAStats => {
 };
 
 const parseHistoryResponse = (raw: unknown): QAPair[] => {
-  if (!Array.isArray(raw)) {
-    throw new Error('接口契约不匹配: GET /qa-pairs 响应应为数组');
-  }
-  return raw.map((item, index) => parseQAPair(item, `history[${index}]`));
+  return parseListResponse(raw, 'GET /qa-pairs', 'history').items;
 };
 
 export const qaApi = {
@@ -187,5 +200,18 @@ export const qaApi = {
       params: { page: 1, page_size: limit }
     });
     return parseHistoryResponse(response.data);
+  },
+
+  async create(payload: CreateQAPayload): Promise<QADetail> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockQaApi.create(payload);
+    }
+
+    if (!API_CONFIG.ENDPOINTS.QA_CREATE) {
+      throw new Error('当前后端未配置人工新增问答对接口，请在 .env 中设置 VITE_QA_CREATE_ENDPOINT');
+    }
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.QA_CREATE, payload);
+    return parseDetailResponse(response.data);
   }
 };

@@ -1,39 +1,40 @@
-﻿<template>
-  <section class="space-y-5">
+<template>
+  <section class="space-y-6">
     <header>
-      <h2 class="text-xl font-semibold">登录审核系统</h2>
-      <p class="mt-1 text-sm text-slate-300">当前为前端骨架，默认走 Mock 鉴权流程。</p>
+      <h2 class="text-2xl font-semibold">登录审核系统</h2>
+      <p class="text-muted mt-2 text-sm">当前为前端骨架，默认走 Mock 鉴权流程。</p>
     </header>
 
     <form class="space-y-4" @submit.prevent="onSubmit">
       <label class="block text-sm">
         用户名
-        <input v-model="form.username" class="mt-1 w-full rounded-md border border-white/15 bg-transparent px-3 py-2" />
+        <input v-model="form.username" data-testid="login-username" class="form-control mt-1" />
       </label>
 
       <label class="block text-sm">
         密码
         <input
           v-model="form.password"
+          data-testid="login-password"
           type="password"
-          class="mt-1 w-full rounded-md border border-white/15 bg-transparent px-3 py-2"
+          class="form-control mt-1"
         />
       </label>
 
       <label class="block text-sm">
         角色
-        <select v-model="form.role" class="mt-1 w-full rounded-md border border-white/15 bg-[var(--color-surface)] px-3 py-2">
+        <select v-model="form.role" data-testid="login-role" class="form-control mt-1">
           <option value="reviewer">审核员</option>
           <option value="admin">管理员</option>
           <option value="viewer">观察员</option>
         </select>
       </label>
 
-      <button type="submit" class="w-full rounded-md bg-emerald-500 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-400">
+      <button type="submit" data-testid="login-submit" class="btn btn-primary w-full">
         进入系统
       </button>
 
-      <p v-if="error" class="text-sm text-rose-300">{{ error }}</p>
+      <p v-if="error" class="text-sm text-[var(--color-danger)]">{{ error }}</p>
     </form>
   </section>
 </template>

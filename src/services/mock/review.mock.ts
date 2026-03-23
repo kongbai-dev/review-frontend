@@ -1,4 +1,4 @@
-﻿import type { AssignPayload, QADetail, QAPair, QAStats, ReviewPayload } from '@/types/domain';
+import type { AssignPayload, CreateQAPayload, QADetail, QAPair, QAStats, ReviewPayload } from '@/types/domain';
 
 const queue: QADetail[] = [
   {
@@ -67,11 +67,19 @@ const queue: QADetail[] = [
 ];
 
 const reviewed: QADetail[] = [];
+let manualSeed = 1000;
 
 const wait = async (ms: number): Promise<void> =>
   new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+
+const nextQaId = (): string => {
+  manualSeed += 1;
+  return `qa-manual-${manualSeed}`;
+};
+
+const nextFragmentId = (qaId: string, index: number): string => `${qaId}-frag-${index + 1}`;
 
 export const mockQaApi = {
   async getPending(limit: number): Promise<QAPair[]> {
@@ -139,5 +147,34 @@ export const mockQaApi = {
   async history(limit: number): Promise<QAPair[]> {
     await wait(120);
     return reviewed.slice(0, limit);
+  },
+
+  async create(payload: CreateQAPayload): Promise<QADetail> {
+    await wait(180);
+
+    const qaId = nextQaId();
+    const next: QADetail = {
+      id: qaId,
+      question: payload.question,
+      answer: payload.answer,
+      topics: [...payload.topics],
+      scenes: [...payload.scenes],
+      confidence: payload.confidence,
+      status: 'pending',
+      reviewer: payload.reviewer?.trim() || '',
+      review_notes: payload.review_notes,
+      version: 1,
+      fragments: payload.fragments.map((fragment, index) => ({
+        id: nextFragmentId(qaId, index),
+        fragment_type: fragment.fragment_type,
+        content: fragment.content,
+        page_start: fragment.page_start,
+        page_end: fragment.page_end,
+        source: fragment.source
+      }))
+    };
+
+    queue.unshift(next);
+    return next;
   }
 };

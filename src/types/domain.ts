@@ -25,6 +25,14 @@ export interface Fragment {
   source?: string;
 }
 
+export interface FragmentDraft {
+  fragment_type: Fragment['fragment_type'];
+  content: string;
+  page_start?: number;
+  page_end?: number;
+  source?: string;
+}
+
 export interface QADetail extends QAPair {
   fragments: Fragment[];
 }
@@ -45,6 +53,17 @@ export interface ReviewPayload {
   status: QAStatus;
   version: number;
   reviewer?: string;
+}
+
+export interface CreateQAPayload {
+  question: string;
+  answer: string;
+  topics: string[];
+  scenes: string[];
+  confidence: number;
+  review_notes: string;
+  reviewer?: string;
+  fragments: FragmentDraft[];
 }
 
 export interface AssignPayload {

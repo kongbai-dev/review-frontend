@@ -1,72 +1,74 @@
-﻿<template>
+<template>
   <section v-if="detail" class="space-y-4">
-    <header class="flex items-center justify-between">
+    <header class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h2 class="text-lg font-semibold">审核详情</h2>
-        <p class="text-xs text-slate-300">ID: {{ detail.id }} | Version: {{ detail.version }}</p>
+        <p class="text-muted text-xs">ID: {{ detail.id }} | Version: {{ detail.version }}</p>
       </div>
-      <RouterLink to="/reviews" class="rounded-md border border-white/20 px-3 py-1.5 text-sm">返回列表</RouterLink>
+      <RouterLink to="/reviews" class="btn btn-ghost btn-sm ui-link-button">返回列表</RouterLink>
     </header>
 
-    <div class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+    <div class="surface-card flex flex-wrap items-center justify-between gap-2 rounded-[1.3rem] px-3 py-2 text-xs">
       <span>{{ draftStatusText }}</span>
-      <button type="button" class="rounded border border-sky-300/40 px-2 py-1" @click="clearDraftNow">清空草稿</button>
+      <button type="button" class="btn btn-ghost btn-sm" @click="clearDraftNow">清空草稿</button>
     </div>
 
-    <form class="space-y-3" @submit.prevent="submitReviewed">
-      <label class="block text-sm">
-        问题
-        <textarea v-model="form.question" rows="3" class="mt-1 w-full rounded-md border border-white/15 bg-black/20 px-3 py-2" />
-      </label>
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.05fr),minmax(320px,0.95fr)]">
+      <form class="surface-card space-y-3 rounded-[1.5rem] p-4" @submit.prevent="submitReviewed">
+        <label class="block text-sm">
+          问题
+          <textarea v-model="form.question" data-testid="review-question" rows="3" class="form-control mt-1" />
+        </label>
 
-      <label class="block text-sm">
-        答案
-        <textarea v-model="form.answer" rows="6" class="mt-1 w-full rounded-md border border-white/15 bg-black/20 px-3 py-2" />
-      </label>
+        <label class="block text-sm">
+          答案
+          <textarea v-model="form.answer" data-testid="review-answer" rows="6" class="form-control mt-1" />
+        </label>
 
-      <label class="block text-sm">
-        主题（逗号分隔）
-        <input v-model="topicsInput" class="mt-1 w-full rounded-md border border-white/15 bg-black/20 px-3 py-2" />
-      </label>
+        <label class="block text-sm">
+          主题（逗号分隔）
+          <input v-model="topicsInput" class="form-control mt-1" />
+        </label>
 
-      <label class="block text-sm">
-        场景（逗号分隔）
-        <input v-model="scenesInput" class="mt-1 w-full rounded-md border border-white/15 bg-black/20 px-3 py-2" />
-      </label>
+        <label class="block text-sm">
+          场景（逗号分隔）
+          <input v-model="scenesInput" class="form-control mt-1" />
+        </label>
 
-      <label class="block text-sm">
-        置信度: {{ form.confidence.toFixed(2) }}
-        <input v-model.number="form.confidence" type="range" min="0.5" max="1" step="0.01" class="mt-1 w-full" />
-      </label>
+        <label class="block text-sm">
+          置信度: {{ form.confidence.toFixed(2) }}
+          <input v-model.number="form.confidence" type="range" min="0.5" max="1" step="0.01" class="mt-3 w-full" />
+        </label>
 
-      <label class="block text-sm">
-        审核备注
-        <textarea v-model="form.review_notes" rows="3" class="mt-1 w-full rounded-md border border-white/15 bg-black/20 px-3 py-2" />
-      </label>
+        <label class="block text-sm">
+          审核备注
+          <textarea v-model="form.review_notes" data-testid="review-notes" rows="3" class="form-control mt-1" />
+        </label>
 
-      <p v-if="error" class="text-sm text-rose-300">{{ error }}</p>
+        <p v-if="error" class="text-sm text-[var(--color-danger)]">{{ error }}</p>
 
-      <div class="flex gap-2">
-        <button type="submit" class="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-black">审核通过</button>
-        <button type="button" class="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-black" @click="submitDeprecated">
-          标记废弃
-        </button>
-      </div>
-    </form>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" data-testid="review-submit" class="btn btn-success">审核通过</button>
+          <button type="button" data-testid="review-deprecate" class="btn btn-warning" @click="submitDeprecated">
+            标记废弃
+          </button>
+        </div>
+      </form>
 
-    <section>
-      <h3 class="mb-2 text-sm font-semibold text-slate-200">关联片段</h3>
-      <article v-for="frag in detail.fragments" :key="frag.id" class="mb-2 rounded-md border border-white/10 bg-black/20 p-3 text-sm">
-        <p class="text-xs text-slate-300">
-          {{ frag.fragment_type }} | {{ frag.source || '未知来源' }} | 页码 {{ frag.page_start ?? '-' }}-{{ frag.page_end ?? '-' }}
-        </p>
-        <p class="mt-2 whitespace-pre-wrap text-slate-100">{{ frag.content }}</p>
-      </article>
-    </section>
+      <section class="surface-card rounded-[1.5rem] p-4">
+        <h3 class="mb-3 text-sm font-semibold">关联片段</h3>
+        <article v-for="frag in detail.fragments" :key="frag.id" class="mb-3 rounded-[1.1rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_42%,transparent)] p-3 text-sm last:mb-0">
+          <p class="text-muted text-xs">
+            {{ frag.fragment_type }} | {{ frag.source || '未知来源' }} | 页码 {{ frag.page_start ?? '-' }}-{{ frag.page_end ?? '-' }}
+          </p>
+          <p class="mt-2 whitespace-pre-wrap">{{ frag.content }}</p>
+        </article>
+      </section>
+    </div>
   </section>
 
-  <p v-else-if="qaStore.loading" class="text-sm text-slate-300">加载中...</p>
-  <p v-else class="text-sm text-slate-300">未找到该审核项。</p>
+  <p v-else-if="qaStore.loading" class="text-muted text-sm">加载中...</p>
+  <p v-else class="text-muted text-sm">未找到该审核项。</p>
 </template>
 
 <script setup lang="ts">
