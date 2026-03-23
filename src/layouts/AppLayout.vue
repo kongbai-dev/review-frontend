@@ -1,13 +1,21 @@
 <template>
   <div class="app-shell flex h-screen flex-col overflow-hidden">
     <header class="app-header shrink-0 border-b">
-      <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
+      <div class="mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4 sm:py-4">
         <div>
           <p class="text-sm font-medium text-[var(--color-primary)]">半导体智能知识库</p>
           <h1 class="text-xl font-semibold">审核前端工作台</h1>
         </div>
 
         <div class="flex items-center gap-2">
+          <button type="button" class="btn btn-ghost btn-sm !px-3" @click="sidebarCollapsed = !sidebarCollapsed">
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path v-if="sidebarCollapsed" d="M9 6l6 6-6 6" />
+              <path v-else d="M15 6l-6 6 6 6" />
+            </svg>
+            <span class="hidden sm:inline">{{ sidebarCollapsed ? '展开导航' : '收起导航' }}</span>
+            <span class="sr-only">{{ sidebarCollapsed ? '展开导航' : '收起导航' }}</span>
+          </button>
           <button
             type="button"
             class="btn btn-ghost btn-sm !px-3"
@@ -28,22 +36,41 @@
       </div>
     </header>
 
-    <div class="mx-auto grid min-h-0 w-full max-w-7xl flex-1 gap-4 overflow-hidden px-4 py-4 lg:grid-cols-[220px,minmax(0,1fr)]">
-      <aside class="surface-panel min-h-0 rounded-[1.5rem] p-3">
+    <div
+      class="app-content-grid mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 gap-3 overflow-hidden px-3 py-3 transition-[grid-template-columns] duration-200 sm:gap-4 sm:px-4 sm:py-4"
+      :style="{ '--sidebar-width': sidebarCollapsed ? '78px' : '220px' }"
+    >
+      <aside class="surface-panel min-h-0 rounded-[1.35rem] p-2.5 sm:p-3">
         <nav class="flex flex-col gap-2">
           <RouterLink
             v-for="item in navItems"
             :key="item.to"
             :to="item.to"
-            class="nav-link"
+            class="nav-link !flex items-center gap-2"
+            :class="sidebarCollapsed ? 'justify-center !px-2.5' : 'justify-start !px-3'"
+            :title="item.label"
             active-class="nav-link-active"
           >
-            {{ item.label }}
+            <svg class="size-[17px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path
+                v-if="item.icon === 'reviews'"
+                d="M4 6.5h16M4 12h16M4 17.5h10M15.5 17.5l2 2 3-4"
+              />
+              <path
+                v-else-if="item.icon === 'dashboard'"
+                d="M4.5 13.5h4v6h-4zM10 9h4v10h-4zM15.5 5h4v14h-4z"
+              />
+              <path
+                v-else
+                d="M7 4.5h10M7 9.5h10M7 14.5h7M4.5 4.5h.01M4.5 9.5h.01M4.5 14.5h.01M7 19.5h10"
+              />
+            </svg>
+            <span v-show="!sidebarCollapsed">{{ item.label }}</span>
           </RouterLink>
         </nav>
       </aside>
 
-      <main class="surface-panel min-h-0 overflow-y-auto rounded-[1.7rem] p-4 sm:p-5">
+      <main class="surface-panel min-h-0 overflow-y-auto rounded-[1.5rem] p-3.5 sm:p-5">
         <RouterView v-slot="{ Component, route }">
           <Transition name="page" mode="out-in">
             <component :is="Component" :key="route.fullPath" />
@@ -55,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUIStore } from '@/stores/ui.store';
@@ -62,11 +90,12 @@ import { useUIStore } from '@/stores/ui.store';
 const router = useRouter();
 const authStore = useAuthStore();
 const uiStore = useUIStore();
+const sidebarCollapsed = ref(false);
 
 const navItems = [
-  { label: '待审队列', to: '/reviews' },
-  { label: '统计面板', to: '/dashboard' },
-  { label: '审核历史', to: '/history' }
+  { label: '待审队列', to: '/reviews', icon: 'reviews' },
+  { label: '统计面板', to: '/dashboard', icon: 'dashboard' },
+  { label: '审核历史', to: '/history', icon: 'history' }
 ];
 
 const onLogout = (): void => {

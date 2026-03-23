@@ -1,4 +1,4 @@
-﻿import { createRouter, createWebHistory } from 'vue-router';
+﻿import { createRouter, createWebHashHistory } from 'vue-router';
 import { pinia } from '@/app/pinia';
 import { useAuthStore } from '@/stores/auth.store';
 import type { UserRole } from '@/types/domain';
@@ -49,7 +49,7 @@ const routes = [
 ];
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 });
 
