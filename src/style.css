@@ -139,6 +139,16 @@ textarea::placeholder {
   color: var(--color-text-primary);
 }
 
+.app-content-grid {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .app-content-grid {
+    grid-template-columns: var(--sidebar-width, 220px) minmax(0, 1fr);
+  }
+}
+
 .app-header,
 .surface-panel,
 .surface-panel-soft,
