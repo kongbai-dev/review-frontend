@@ -83,11 +83,19 @@ export interface QAFilters {
 export interface LoginPayload {
   username: string;
   password: string;
-  role: UserRole;
 }
 
 export interface SessionInfo {
   token: string;
   username: string;
   role: UserRole;
+}
+
+export interface MeInfo {
+  id: number;
+  username: string;
+  role: UserRole;
+  name?: string;
+  status?: string;
+  created_at?: string;
 }

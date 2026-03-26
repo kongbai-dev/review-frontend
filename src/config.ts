@@ -14,6 +14,9 @@ export const API_CONFIG = {
   AUTH_ROLE_KEY: 'review_auth_role',
   AUTH_USERNAME_KEY: 'review_auth_username',
   ENDPOINTS: {
+    AUTH_LOGIN: '/auth/login',
+    AUTH_ME: '/auth/me',
+    AUTH_LOGOUT: '/auth/logout',
     QA_PENDING: '/qa/pending',
     QA_RESOURCE: (id: string) => `/qa/${id}`,
     QA_STATS: '/qa/stats',
