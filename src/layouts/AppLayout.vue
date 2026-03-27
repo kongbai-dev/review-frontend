@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="app-shell flex h-screen flex-col overflow-hidden">
     <header class="app-header shrink-0 border-b">
       <div class="mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4 sm:py-4">
@@ -61,6 +61,14 @@
                 d="M4.5 13.5h4v6h-4zM10 9h4v10h-4zM15.5 5h4v14h-4z"
               />
               <path
+                v-else-if="item.icon === 'documents'"
+                d="M7 3.5h7l3.5 3.5v13H7zM14 3.5v4h3.5M9.5 12h6M9.5 15.5h6"
+              />
+              <path
+                v-else-if="item.icon === 'members'"
+                d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM4.5 19c0-2.5 2.3-4.5 5.5-4.5s5.5 2 5.5 4.5M14 18c.5-1.7 2-3 4.5-3 1.1 0 2.1.2 3 .7"
+              />
+              <path
                 v-else
                 d="M7 4.5h10M7 9.5h10M7 14.5h7M4.5 4.5h.01M4.5 9.5h.01M4.5 14.5h.01M7 19.5h10"
               />
@@ -95,11 +103,13 @@ const sidebarCollapsed = ref(false);
 const navItems = [
   { label: '待审队列', to: '/reviews', icon: 'reviews' },
   { label: '统计面板', to: '/dashboard', icon: 'dashboard' },
+  { label: '文档管理', to: '/documents', icon: 'documents' },
+  { label: '成员排行', to: '/members', icon: 'members' },
   { label: '审核历史', to: '/history', icon: 'history' }
 ];
 
-const onLogout = (): void => {
-  authStore.logout();
+const onLogout = async (): Promise<void> => {
+  await authStore.logout();
   void router.push('/login');
 };
 </script>

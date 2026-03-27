@@ -1,17 +1,13 @@
-<template>
+﻿<template>
   <section class="space-y-4">
     <header class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-lg font-semibold">待审核问答</h2>
-        <p class="text-muted text-sm">按后端契约字段展示，并支持任务分配与人工补录。</p>
+        <h2 class="text-lg font-semibold">待审队列</h2>
+        <p class="text-muted text-sm">按后端契约字段展示，支持任务分配、筛选和人工补录。</p>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          @click="openUploadDialog"
-        >
+        <button type="button" class="btn btn-ghost btn-sm" @click="goToDocuments">
           上传文档
         </button>
         <button
@@ -24,13 +20,6 @@
           {{ showManualForm ? '收起人工录入' : '人工添加问答对' }}
         </button>
         <button class="btn btn-primary btn-sm" @click="refresh">刷新</button>
-        <input
-          ref="uploadInputRef"
-          type="file"
-          class="hidden"
-          accept=".pdf,.doc,.docx,.txt,.md"
-          @change="handleUploadSelected"
-        />
       </div>
     </header>
 
@@ -61,20 +50,29 @@
       @claim="claimSelected"
     />
 
-    <p v-if="qaStore.error" class="rounded-2xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)] px-3 py-2 text-sm text-[var(--color-danger)]">
+    <p
+      v-if="qaStore.error"
+      class="rounded-2xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)] px-3 py-2 text-sm text-[var(--color-danger)]"
+    >
       {{ qaStore.error }}
     </p>
 
     <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
       <label class="inline-flex items-center gap-2">
         <input type="checkbox" class="size-4" :checked="allVisibleSelected" @change="toggleAll" />
-        当前已加载全选
+        当前已加载项全选
       </label>
-      <span class="text-muted">筛选结果 {{ filteredPending.length }} 条 / 总待审 {{ qaStore.pending.length }} 条，已显示 {{ visiblePending.length }} 条</span>
+      <span class="text-muted">
+        筛选结果 {{ filteredPending.length }} 条 / 总待审 {{ qaStore.pending.length }} 条，当前显示 {{ visiblePending.length }} 条
+      </span>
     </div>
 
     <div class="columns-1 gap-3 sm:columns-2 xl:columns-3 2xl:columns-4">
-      <article v-for="item in visiblePending" :key="item.id" class="surface-card mb-3 break-inside-avoid rounded-[1.05rem] p-3">
+      <article
+        v-for="item in visiblePending"
+        :key="item.id"
+        class="surface-card mb-3 break-inside-avoid rounded-[1.05rem] p-3"
+      >
         <div class="flex items-start justify-between gap-3">
           <label class="inline-flex items-center gap-2 text-xs">
             <input
@@ -85,7 +83,9 @@
             />
             {{ item.id }}
           </label>
-          <span class="status-pill shrink-0 min-w-[4.8rem] justify-center whitespace-nowrap">{{ item.reviewer || '未分配' }}</span>
+          <span class="status-pill shrink-0 min-w-[4.8rem] justify-center whitespace-nowrap">
+            {{ item.reviewer || '未分配' }}
+          </span>
         </div>
 
         <h3 class="mt-2 line-clamp-2 text-sm font-semibold leading-5">{{ item.question }}</h3>
@@ -128,7 +128,6 @@ const router = useRouter();
 const LOAD_BATCH = 12;
 const visibleCount = ref(LOAD_BATCH);
 const loadMoreAnchor = ref<HTMLElement | null>(null);
-const uploadInputRef = ref<HTMLInputElement | null>(null);
 const showManualForm = ref(false);
 let observer: IntersectionObserver | null = null;
 
@@ -136,10 +135,7 @@ const filteredPending = computed(() => qaStore.filteredPending);
 const canCreateManual = computed(() => authStore.role !== 'viewer');
 const manualCreateReady = API_CONFIG.USE_MOCK || Boolean(API_CONFIG.ENDPOINTS.QA_CREATE);
 
-const visiblePending = computed<QAPair[]>(() => {
-  return filteredPending.value.slice(0, visibleCount.value);
-});
-
+const visiblePending = computed<QAPair[]>(() => filteredPending.value.slice(0, visibleCount.value));
 const hasMore = computed(() => visiblePending.value.length < filteredPending.value.length);
 
 const allVisibleSelected = computed(() => {
@@ -188,17 +184,8 @@ const refresh = async (): Promise<void> => {
   await qaStore.fetchPending();
 };
 
-const openUploadDialog = (): void => {
-  uploadInputRef.value?.click();
-};
-
-const handleUploadSelected = (event: Event): void => {
-  const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) {
-    return;
-  }
-  // 预留上传入口：当前版本仅触发文档选择，不调用后端上传接口。
-  target.value = '';
+const goToDocuments = (): void => {
+  void router.push('/documents?openUpload=1');
 };
 
 const updateFilters = (value: QAFilters): void => {
@@ -220,6 +207,7 @@ const toggleAll = (event: Event): void => {
     qaStore.setSelection(Array.from(new Set([...qaStore.selectedIds, ...visiblePending.value.map((item) => item.id)])));
     return;
   }
+
   const currentPageIds = new Set(visiblePending.value.map((item) => item.id));
   qaStore.setSelection(qaStore.selectedIds.filter((id) => !currentPageIds.has(id)));
 };

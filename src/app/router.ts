@@ -34,6 +34,18 @@ const routes = [
         meta: { roles: ['admin', 'reviewer'] as UserRole[] }
       },
       {
+        path: 'documents',
+        name: 'documents',
+        component: () => import('@/pages/DocumentManagePage.vue'),
+        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+      },
+      {
+        path: 'members',
+        name: 'members',
+        component: () => import('@/pages/MemberRankingPage.vue'),
+        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+      },
+      {
         path: 'history',
         name: 'history',
         component: () => import('@/pages/HistoryPage.vue'),
@@ -53,8 +65,9 @@ export const router = createRouter({
   routes
 });
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore(pinia);
+  await authStore.ensureSession();
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return { name: 'login' };
