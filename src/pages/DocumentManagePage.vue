@@ -1,26 +1,8 @@
 ﻿<template>
-  <section class="space-y-4">
-    <header class="flex flex-wrap items-center justify-between gap-2">
-      <div>
-        <h2 class="text-lg font-semibold">文档管理</h2>
-        <p class="text-muted text-sm">查看知识库文档概况，集中处理上传、分页列表和原文下载。</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button type="button" class="btn btn-ghost btn-sm" @click="toggleUploadPanel">
-          {{ showUploadPanel ? '收起上传面板' : '上传文档' }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          :disabled="documentStore.loading || documentStore.uploading"
-          @click="refresh"
-        >
-          刷新
-        </button>
-      </div>
-    </header>
-
-    <DocumentStatsCards :stats="documentStore.stats" :loading="statsLoading" />
+  <section class="space-y-3">
+    <div class="px-1">
+      <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-primary)]">Document Workspace</p>
+    </div>
 
     <p
       v-if="documentStore.error"
@@ -29,95 +11,132 @@
       {{ documentStore.error }}
     </p>
 
-    <DocumentUploadPanel
-      v-if="showUploadPanel"
-      :loading="documentStore.uploading"
-      :error="documentStore.error"
-      @submit="handleUpload"
-      @cancel="closeUploadPanel"
-    />
+    <section class="surface-panel overflow-hidden rounded-[1.7rem]">
+      <div class="border-b border-[var(--color-border)] px-4 py-4 sm:px-5 sm:py-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h3 class="text-base font-semibold">文档列表</h3>
+            <p class="text-muted mt-1 text-sm">
+              当前共 {{ documentStore.total }} 份文档，页码 {{ documentStore.page }} / {{ documentStore.totalPages }}。
+            </p>
+          </div>
 
-    <section class="surface-card rounded-[1.45rem] p-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 class="text-sm font-semibold">列表筛选与排序</h3>
-          <p class="text-muted mt-1 text-xs">文档列表使用服务端分页，默认按上传时间倒序。</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn btn-ghost btn-sm" @click="toggleUploadPanel">
+              {{ showUploadPanel ? '收起上传面板' : '上传文档' }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="documentStore.loading || documentStore.uploading"
+              @click="refresh"
+            >
+              刷新
+            </button>
+          </div>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.loading" @click="resetFilters">
-            重置
-          </button>
-          <button type="button" class="btn btn-primary btn-sm" :disabled="documentStore.loading" @click="applyFilters">
-            应用筛选
-          </button>
+
+        <DocumentStatsCards class="mt-4" :stats="documentStore.stats" :loading="statsLoading" variant="compact" />
+
+        <DocumentUploadPanel
+          v-if="showUploadPanel"
+          class="mt-4"
+          :loading="documentStore.uploading"
+          :error="documentStore.error"
+          @submit="handleUpload"
+          @cancel="closeUploadPanel"
+        />
+
+        <div class="mt-4 flex flex-wrap items-end gap-3 xl:flex-nowrap">
+          <label class="block min-w-[260px] flex-[1.8] text-sm">
+            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">关键词</span>
+            <input
+              v-model="filters.keyword"
+              class="form-control"
+              placeholder="按文件名、上传人或知识库检索"
+              @keydown.enter.prevent="applyFilters"
+            />
+          </label>
+
+          <label class="block min-w-[130px] flex-1 text-sm xl:max-w-[150px]">
+            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">文件类型</span>
+            <select v-model="filters.file_type" class="form-control">
+              <option value="">全部</option>
+              <option v-for="option in fileTypeOptions" :key="option" :value="option">{{ option.toUpperCase() }}</option>
+            </select>
+          </label>
+
+          <label class="block min-w-[130px] flex-1 text-sm xl:max-w-[150px]">
+            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">状态</span>
+            <select v-model="filters.status" class="form-control">
+              <option value="">全部</option>
+              <option value="indexed">已索引</option>
+              <option value="processing">处理中</option>
+              <option value="failed">失败</option>
+            </select>
+          </label>
+
+          <label class="block min-w-[150px] flex-1 text-sm xl:max-w-[180px]">
+            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">排序字段</span>
+            <select v-model="filters.sort_by" class="form-control">
+              <option value="uploaded_at">上传时间</option>
+              <option value="file_name">文件名</option>
+              <option value="fragment_count">片段数</option>
+              <option value="qa_count">QA 数</option>
+            </select>
+          </label>
+
+          <div class="min-w-[164px] text-sm xl:w-[176px] xl:flex-none">
+            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">排序方向</span>
+            <div class="grid grid-cols-2 rounded-[0.95rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg-elevated)_50%,transparent)] p-1">
+              <button
+                type="button"
+                class="rounded-[0.72rem] px-3 py-2 text-sm font-medium transition-colors"
+                :class="filters.order === 'desc'
+                  ? 'bg-[color:color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-secondary)]'"
+                @click="filters.order = 'desc'"
+              >
+                降序
+              </button>
+              <button
+                type="button"
+                class="rounded-[0.72rem] px-3 py-2 text-sm font-medium transition-colors"
+                :class="filters.order === 'asc'
+                  ? 'bg-[color:color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-secondary)]'"
+                @click="filters.order = 'asc'"
+              >
+                升序
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 xl:ml-auto xl:flex-none">
+            <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.loading" @click="resetFilters">
+              重置
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" :disabled="documentStore.loading" @click="applyFilters">
+              应用筛选
+            </button>
+          </div>
         </div>
+
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <label class="block text-sm xl:col-span-2">
-          关键词
-          <input
-            v-model="filters.keyword"
-            class="form-control mt-1"
-            placeholder="按文件名、上传人或知识库检索"
-            @keydown.enter.prevent="applyFilters"
-          />
-        </label>
-
-        <label class="block text-sm">
-          文件类型
-          <select v-model="filters.file_type" class="form-control mt-1">
-            <option value="">全部</option>
-            <option v-for="option in fileTypeOptions" :key="option" :value="option">{{ option.toUpperCase() }}</option>
-          </select>
-        </label>
-
-        <label class="block text-sm">
-          状态
-          <select v-model="filters.status" class="form-control mt-1">
-            <option value="">全部</option>
-            <option value="indexed">已索引</option>
-            <option value="processing">处理中</option>
-            <option value="failed">失败</option>
-          </select>
-        </label>
-
-        <label class="block text-sm">
-          排序字段
-          <select v-model="filters.sort_by" class="form-control mt-1">
-            <option value="uploaded_at">上传时间</option>
-            <option value="file_name">文件名</option>
-            <option value="fragment_count">片段数</option>
-            <option value="qa_count">QA 数</option>
-          </select>
-        </label>
-
-        <label class="block text-sm xl:col-start-5">
-          排序方向
-          <select v-model="filters.order" class="form-control mt-1">
-            <option value="desc">降序</option>
-            <option value="asc">升序</option>
-          </select>
-        </label>
-      </div>
+      <DocumentTable
+        embedded
+        :items="documentStore.items"
+        :total="documentStore.total"
+        :page="documentStore.page"
+        :page-size="documentStore.pageSize"
+        :loading="documentStore.loading"
+        :downloading-id="documentStore.downloadingId"
+        @download="handleDownload"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
     </section>
-
-    <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-      <span class="text-muted">当前共 {{ documentStore.total }} 份文档，页码 {{ documentStore.page }} / {{ documentStore.totalPages }}</span>
-      <span class="text-muted">下载使用后端签名地址，点击时按最新 URL 发起。</span>
-    </div>
-
-    <DocumentTable
-      :items="documentStore.items"
-      :total="documentStore.total"
-      :page="documentStore.page"
-      :page-size="documentStore.pageSize"
-      :loading="documentStore.loading"
-      :downloading-id="documentStore.downloadingId"
-      @download="handleDownload"
-      @update:page="handlePageChange"
-      @update:page-size="handlePageSizeChange"
-    />
   </section>
 </template>
 
