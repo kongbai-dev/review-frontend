@@ -1,145 +1,191 @@
 ﻿<template>
-  <section class="space-y-3">
-    <div class="px-1">
-      <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-primary)]">Document Workspace</p>
-    </div>
-
+  <section class="flex h-[calc(100vh-7.5rem)] min-h-[640px] flex-col gap-3">
     <p
       v-if="documentStore.error"
-      class="rounded-2xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)] px-3 py-2 text-sm text-[var(--color-danger)]"
+      class="rounded-xl border border-[color:color-mix(in_srgb,var(--color-danger)_24%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,white)] px-3 py-2 text-sm text-[var(--color-danger)]"
     >
       {{ documentStore.error }}
     </p>
 
-    <section class="surface-panel overflow-hidden rounded-[1.7rem]">
-      <div class="border-b border-[var(--color-border)] px-4 py-4 sm:px-5 sm:py-5">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h3 class="text-base font-semibold">文档列表</h3>
-            <p class="text-muted mt-1 text-sm">
-              当前共 {{ documentStore.total }} 份文档，页码 {{ documentStore.page }} / {{ documentStore.totalPages }}。
-            </p>
-          </div>
+    <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+      <div class="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+        <div class="px-4 py-3 sm:px-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 class="text-base font-semibold text-[var(--color-text-primary)]">文档管理</h2>
+                <span class="text-xs text-[var(--color-text-secondary)]">
+                  {{ documentStore.total }} 份文档 · 第 {{ documentStore.page }}/{{ documentStore.totalPages }} 页
+                </span>
+              </div>
+              <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-text-secondary)]">
+                <span>文档 {{ documentStore.stats.document_count }}</span>
+                <span>片段 {{ documentStore.stats.fragment_count }}</span>
+                <span>QA {{ documentStore.stats.qa_count }}</span>
+                <span>
+                  状态：
+                  <span class="font-medium text-[var(--color-text-primary)]">
+                    {{ statsLoading ? '加载中' : '已同步' }}
+                  </span>
+                </span>
+              </div>
+            </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="button" class="btn btn-ghost btn-sm" @click="toggleUploadPanel">
-              {{ showUploadPanel ? '收起上传面板' : '上传文档' }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              :disabled="documentStore.loading || documentStore.uploading"
-              @click="refresh"
-            >
-              刷新
-            </button>
-          </div>
-        </div>
-
-        <DocumentStatsCards class="mt-4" :stats="documentStore.stats" :loading="statsLoading" variant="compact" />
-
-        <DocumentUploadPanel
-          v-if="showUploadPanel"
-          class="mt-4"
-          :loading="documentStore.uploading"
-          :error="documentStore.error"
-          @submit="handleUpload"
-          @cancel="closeUploadPanel"
-        />
-
-        <div class="mt-4 flex flex-wrap items-end gap-3 xl:flex-nowrap">
-          <label class="block min-w-[260px] flex-[1.8] text-sm">
-            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">关键词</span>
-            <input
-              v-model="filters.keyword"
-              class="form-control"
-              placeholder="按文件名、上传人或知识库检索"
-              @keydown.enter.prevent="applyFilters"
-            />
-          </label>
-
-          <label class="block min-w-[130px] flex-1 text-sm xl:max-w-[150px]">
-            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">文件类型</span>
-            <select v-model="filters.file_type" class="form-control">
-              <option value="">全部</option>
-              <option v-for="option in fileTypeOptions" :key="option" :value="option">{{ option.toUpperCase() }}</option>
-            </select>
-          </label>
-
-          <label class="block min-w-[130px] flex-1 text-sm xl:max-w-[150px]">
-            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">状态</span>
-            <select v-model="filters.status" class="form-control">
-              <option value="">全部</option>
-              <option value="indexed">已索引</option>
-              <option value="processing">处理中</option>
-              <option value="failed">失败</option>
-            </select>
-          </label>
-
-          <label class="block min-w-[150px] flex-1 text-sm xl:max-w-[180px]">
-            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">排序字段</span>
-            <select v-model="filters.sort_by" class="form-control">
-              <option value="uploaded_at">上传时间</option>
-              <option value="file_name">文件名</option>
-              <option value="fragment_count">片段数</option>
-              <option value="qa_count">QA 数</option>
-            </select>
-          </label>
-
-          <div class="min-w-[164px] text-sm xl:w-[176px] xl:flex-none">
-            <span class="mb-1.5 block text-[12px] font-medium text-[var(--color-text-secondary)]">排序方向</span>
-            <div class="grid grid-cols-2 rounded-[0.95rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg-elevated)_50%,transparent)] p-1">
+            <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                class="rounded-[0.72rem] px-3 py-2 text-sm font-medium transition-colors"
-                :class="filters.order === 'desc'
-                  ? 'bg-[color:color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-[var(--color-text-primary)]'
-                  : 'text-[var(--color-text-secondary)]'"
-                @click="filters.order = 'desc'"
+                class="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-primary)_4%,white)]"
+                @click="toggleUploadPanel"
               >
-                降序
+                {{ showUploadPanel ? '收起上传' : '上传文档' }}
               </button>
               <button
                 type="button"
-                class="rounded-[0.72rem] px-3 py-2 text-sm font-medium transition-colors"
-                :class="filters.order === 'asc'
-                  ? 'bg-[color:color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-[var(--color-text-primary)]'
-                  : 'text-[var(--color-text-secondary)]'"
-                @click="filters.order = 'asc'"
+                class="inline-flex items-center justify-center rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="documentStore.loading || documentStore.uploading"
+                @click="refresh"
               >
-                升序
+                刷新
               </button>
             </div>
           </div>
 
-          <div class="flex items-center gap-2 xl:ml-auto xl:flex-none">
-            <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.loading" @click="resetFilters">
-              重置
-            </button>
-            <button type="button" class="btn btn-primary btn-sm" :disabled="documentStore.loading" @click="applyFilters">
-              应用筛选
-            </button>
+          <transition
+            enter-active-class="transition duration-150 ease-out"
+            enter-from-class="opacity-0 -translate-y-1"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition duration-100 ease-in"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-1"
+          >
+            <div
+              v-if="showUploadPanel"
+              class="mt-3 rounded-xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg)_88%,transparent)] p-3"
+            >
+              <DocumentUploadPanel
+                :loading="documentStore.uploading"
+                :error="documentStore.error"
+                @submit="handleUpload"
+                @cancel="closeUploadPanel"
+              />
+            </div>
+          </transition>
+
+          <div class="mt-3 flex flex-wrap items-end gap-2">
+            <label class="min-w-[220px] flex-[1.8] text-sm">
+              <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">关键词</span>
+              <input
+                v-model="filters.keyword"
+                class="form-control h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+                placeholder="文件名 / 上传人 / 知识库"
+                @keydown.enter.prevent="applyFilters"
+              />
+            </label>
+
+            <label class="w-[118px] text-sm">
+              <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">类型</span>
+              <select
+                v-model="filters.file_type"
+                class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+              >
+                <option value="">全部</option>
+                <option v-for="option in fileTypeOptions" :key="option" :value="option">
+                  {{ option.toUpperCase() }}
+                </option>
+              </select>
+            </label>
+
+            <label class="w-[118px] text-sm">
+              <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">状态</span>
+              <select
+                v-model="filters.status"
+                class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+              >
+                <option value="">全部</option>
+                <option value="indexed">已索引</option>
+                <option value="processing">处理中</option>
+                <option value="failed">失败</option>
+              </select>
+            </label>
+
+            <label class="w-[132px] text-sm">
+              <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">排序字段</span>
+              <select
+                v-model="filters.sort_by"
+                class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+              >
+                <option value="uploaded_at">上传时间</option>
+                <option value="file_name">文件名</option>
+                <option value="fragment_count">片段数</option>
+                <option value="qa_count">QA 数</option>
+              </select>
+            </label>
+
+            <div class="w-[136px] text-sm">
+              <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">排序</span>
+              <div class="grid grid-cols-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-0.5">
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1.5 text-sm font-medium transition-colors"
+                  :class="filters.order === 'desc'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'text-[var(--color-text-secondary)]'"
+                  @click="filters.order = 'desc'"
+                >
+                  降序
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1.5 text-sm font-medium transition-colors"
+                  :class="filters.order === 'asc'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'text-[var(--color-text-secondary)]'"
+                  @click="filters.order = 'asc'"
+                >
+                  升序
+                </button>
+              </div>
+            </div>
+
+            <div class="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-primary)_4%,white)] disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="documentStore.loading"
+                @click="resetFilters"
+              >
+                重置
+              </button>
+              <button
+                type="button"
+                class="inline-flex h-9 items-center justify-center rounded-lg bg-[var(--color-primary)] px-3 text-sm font-medium text-white transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="documentStore.loading"
+                @click="applyFilters"
+              >
+                筛选
+              </button>
+            </div>
           </div>
         </div>
-
       </div>
 
-      <DocumentTable
-        embedded
-        :items="documentStore.items"
-        :total="documentStore.total"
-        :page="documentStore.page"
-        :page-size="documentStore.pageSize"
-        :loading="documentStore.loading"
-        :downloading-id="documentStore.downloadingId"
-        @download="handleDownload"
-        @update:page="handlePageChange"
-        @update:page-size="handlePageSizeChange"
-      />
+      <div class="min-h-0 flex-1 overflow-auto bg-[var(--color-bg)]">
+        <DocumentTable
+          embedded
+          :items="documentStore.items"
+          :total="documentStore.total"
+          :page="documentStore.page"
+          :page-size="documentStore.pageSize"
+          :loading="documentStore.loading"
+          :downloading-id="documentStore.downloadingId"
+          @download="handleDownload"
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </div>
     </section>
   </section>
 </template>
-
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
