@@ -23,6 +23,8 @@ const sortItems = (items: MemberRankingItem[], sortBy: MemberRankingSortField, o
       result = left.uploaded_document_count - right.uploaded_document_count;
     } else if (sortBy === 'reviewed_qa') {
       result = left.reviewed_qa_count - right.reviewed_qa_count;
+    } else if (sortBy === 'processed_qa') {
+      result = left.processed_qa_count - right.processed_qa_count;
     } else {
       result = compareText(left.username, right.username);
     }

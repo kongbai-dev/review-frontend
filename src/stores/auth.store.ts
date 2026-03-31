@@ -10,7 +10,19 @@ interface AuthState {
   sessionChecked: boolean;
 }
 
-const defaultRole = (localStorage.getItem(API_CONFIG.AUTH_ROLE_KEY) as UserRole | null) || 'reviewer';
+const normalizeStoredRole = (rawRole: string | null): UserRole => {
+  if (rawRole === 'admin' || rawRole === 'reviewer' || rawRole === 'observer') {
+    return rawRole;
+  }
+
+  if (rawRole === 'viewer') {
+    return 'observer';
+  }
+
+  return 'reviewer';
+};
+
+const defaultRole = normalizeStoredRole(localStorage.getItem(API_CONFIG.AUTH_ROLE_KEY));
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({

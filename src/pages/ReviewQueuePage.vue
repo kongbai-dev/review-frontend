@@ -132,7 +132,7 @@ const showManualForm = ref(false);
 let observer: IntersectionObserver | null = null;
 
 const filteredPending = computed(() => qaStore.filteredPending);
-const canCreateManual = computed(() => authStore.role !== 'viewer');
+const canCreateManual = computed(() => authStore.role !== 'observer');
 const manualCreateReady = API_CONFIG.USE_MOCK || Boolean(API_CONFIG.ENDPOINTS.QA_CREATE);
 
 const visiblePending = computed<QAPair[]>(() => filteredPending.value.slice(0, visibleCount.value));
@@ -276,3 +276,4 @@ onBeforeUnmount(() => {
   observer?.disconnect();
 });
 </script>
+

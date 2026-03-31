@@ -12,7 +12,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const expectString = (value: unknown, path: string): string => {
   if (typeof value !== 'string') {
-    throw new Error(`接口契约不匹配: ${path} 应为 string`);
+    throw new Error(`Contract mismatch: ${path} must be string`);
   }
   return value;
 };
@@ -26,23 +26,32 @@ const expectOptionalString = (value: unknown, path: string): string | undefined 
 
 const expectNumber = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`接口契约不匹配: ${path} 应为 number`);
+    throw new Error(`Contract mismatch: ${path} must be number`);
   }
   return value;
 };
 
-const parseRankingItem = (raw: unknown, path = 'member'): MemberRankingItem => {
+const optionalNumber = (value: unknown, fallback: number, path: string): number => {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  return expectNumber(value, path);
+};
+
+const parseRankingItem = (raw: unknown, path = 'member', index = 0): MemberRankingItem => {
   if (!isObject(raw)) {
-    throw new Error(`接口契约不匹配: ${path} 应为对象`);
+    throw new Error(`Contract mismatch: ${path} must be object`);
   }
 
   return {
-    rank: expectNumber(raw.rank, `${path}.rank`),
+    rank: optionalNumber(raw.rank, index + 1, `${path}.rank`),
     user_id: expectString(raw.user_id, `${path}.user_id`),
     username: expectString(raw.username, `${path}.username`),
     display_name: expectOptionalString(raw.display_name, `${path}.display_name`),
     uploaded_document_count: expectNumber(raw.uploaded_document_count, `${path}.uploaded_document_count`),
     reviewed_qa_count: expectNumber(raw.reviewed_qa_count, `${path}.reviewed_qa_count`),
+    deprecated_qa_count: optionalNumber(raw.deprecated_qa_count, 0, `${path}.deprecated_qa_count`),
+    processed_qa_count: optionalNumber(raw.processed_qa_count, 0, `${path}.processed_qa_count`),
     last_active_at: expectOptionalString(raw.last_active_at, `${path}.last_active_at`)
   };
 };
@@ -50,7 +59,7 @@ const parseRankingItem = (raw: unknown, path = 'member'): MemberRankingItem => {
 const parseRankingList = (raw: unknown, fallbackPage: number, fallbackPageSize: number): PagedListResponse<MemberRankingItem> => {
   if (Array.isArray(raw)) {
     return {
-      items: raw.map((item, index) => parseRankingItem(item, `members[${index}]`)),
+      items: raw.map((item, index) => parseRankingItem(item, `members[${index}]`, index)),
       total: raw.length,
       page: fallbackPage,
       page_size: fallbackPageSize
@@ -58,11 +67,11 @@ const parseRankingList = (raw: unknown, fallbackPage: number, fallbackPageSize: 
   }
 
   if (!isObject(raw) || !Array.isArray(raw.items)) {
-    throw new Error('接口契约不匹配: 成员排行响应应为 { items, total, page, page_size }');
+    throw new Error('Contract mismatch: member ranking response must be { items, total, page, page_size }');
   }
 
   return {
-    items: raw.items.map((item, index) => parseRankingItem(item, `members[${index}]`)),
+    items: raw.items.map((item, index) => parseRankingItem(item, `members[${index}]`, index)),
     total: raw.total === undefined ? raw.items.length : expectNumber(raw.total, 'members.total'),
     page: raw.page === undefined ? fallbackPage : expectNumber(raw.page, 'members.page'),
     page_size: raw.page_size === undefined ? fallbackPageSize : expectNumber(raw.page_size, 'members.page_size')

@@ -1,8 +1,9 @@
-﻿import { API_CONFIG } from '@/config';
+﻿import { isAxiosError } from 'axios';
+import { API_CONFIG } from '@/config';
 import { http } from '@/services/http';
 import { mockDocumentApi } from '@/services/mock/document.mock';
 import type { PagedListResponse } from '@/types/api';
-import type { DocumentListQuery, DocumentStats, DocumentStatus, KnowledgeDocument, UploadDocumentResult } from '@/types/domain';
+import type { DocumentListQuery, DocumentStats, DocumentStatus, DocumentType, KnowledgeDocument, UploadDocumentResult } from '@/types/domain';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -12,7 +13,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const expectString = (value: unknown, path: string): string => {
   if (typeof value !== 'string') {
-    throw new Error(`接口契约不匹配: ${path} 应为 string`);
+    throw new Error(`Contract mismatch: ${path} must be string`);
   }
   return value;
 };
@@ -26,7 +27,7 @@ const expectOptionalString = (value: unknown, path: string): string | undefined 
 
 const expectNumber = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`接口契约不匹配: ${path} 应为 number`);
+    throw new Error(`Contract mismatch: ${path} must be number`);
   }
   return value;
 };
@@ -36,31 +37,60 @@ const expectDocumentStatus = (value: unknown, path: string): DocumentStatus => {
   if (status === 'indexed' || status === 'processing' || status === 'failed') {
     return status;
   }
-  throw new Error(`接口契约不匹配: ${path} 状态值非法`);
+  throw new Error(`Contract mismatch: ${path} has invalid status`);
+};
+
+const expectOptionalDocumentType = (value: unknown, path: string): DocumentType | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const docType = expectString(value, path);
+  if (
+    docType === 'paper' ||
+    docType === 'conference' ||
+    docType === 'book' ||
+    docType === 'manual' ||
+    docType === 'code' ||
+    docType === 'data'
+  ) {
+    return docType;
+  }
+
+  return undefined;
 };
 
 const parseDocument = (raw: unknown, path = 'document'): KnowledgeDocument => {
   if (!isObject(raw)) {
-    throw new Error(`接口契约不匹配: ${path} 应为对象`);
+    throw new Error(`Contract mismatch: ${path} must be object`);
+  }
+
+  const id = raw.document_id ?? raw.id;
+  if (typeof id !== 'string' || !id.trim()) {
+    throw new Error(`Contract mismatch: ${path}.document_id is required`);
   }
 
   return {
-    document_id: expectString(raw.document_id, `${path}.document_id`),
+    document_id: id,
+    title: expectOptionalString(raw.title, `${path}.title`),
     file_name: expectString(raw.file_name, `${path}.file_name`),
     file_type: expectString(raw.file_type, `${path}.file_type`),
     file_size: expectNumber(raw.file_size, `${path}.file_size`),
     uploaded_at: expectString(raw.uploaded_at, `${path}.uploaded_at`),
     uploaded_by: expectString(raw.uploaded_by, `${path}.uploaded_by`),
+    uploaded_by_name: expectOptionalString(raw.uploaded_by_name, `${path}.uploaded_by_name`),
+    document_type: expectOptionalDocumentType(raw.document_type ?? raw.type, `${path}.document_type`),
     knowledge_base: expectOptionalString(raw.knowledge_base, `${path}.knowledge_base`),
     status: expectDocumentStatus(raw.status, `${path}.status`),
     fragment_count: expectNumber(raw.fragment_count, `${path}.fragment_count`),
-    qa_count: expectNumber(raw.qa_count, `${path}.qa_count`)
+    qa_count: expectNumber(raw.qa_count, `${path}.qa_count`),
+    latest_task_status: expectOptionalString(raw.latest_task_status, `${path}.latest_task_status`)
   };
 };
 
 const parseStats = (raw: unknown): DocumentStats => {
   if (!isObject(raw)) {
-    throw new Error('接口契约不匹配: 文档统计响应应为对象');
+    throw new Error('Contract mismatch: document stats response must be object');
   }
 
   return {
@@ -84,7 +114,7 @@ const parseDocumentList = (raw: unknown, fallbackPage: number, fallbackPageSize:
   }
 
   if (!isObject(raw) || !Array.isArray(raw.items)) {
-    throw new Error('接口契约不匹配: 文档列表响应应为 { items, total, page, page_size }');
+    throw new Error('Contract mismatch: document list response must be { items, total, page, page_size }');
   }
 
   return {
@@ -97,15 +127,22 @@ const parseDocumentList = (raw: unknown, fallbackPage: number, fallbackPageSize:
 
 const parseUploadResult = (raw: unknown): UploadDocumentResult => {
   if (!isObject(raw)) {
-    throw new Error('接口契约不匹配: 上传响应应为对象');
+    throw new Error('Contract mismatch: upload response must be object');
   }
 
   return {
     document_id: expectString(raw.document_id, 'upload.document_id'),
+    title: expectOptionalString(raw.title, 'upload.title'),
     file_name: expectString(raw.file_name, 'upload.file_name'),
+    document_type: expectOptionalDocumentType(raw.document_type ?? raw.type, 'upload.document_type'),
+    knowledge_base: expectOptionalString(raw.knowledge_base, 'upload.knowledge_base'),
     file_md5: expectOptionalString(raw.file_md5, 'upload.file_md5'),
     object_key: expectOptionalString(raw.object_key, 'upload.object_key'),
-    status: expectString(raw.status, 'upload.status')
+    status: expectString(raw.status, 'upload.status'),
+    fragment_count: raw.fragment_count === undefined ? undefined : expectNumber(raw.fragment_count, 'upload.fragment_count'),
+    generated_pending_qas:
+      raw.generated_pending_qas === undefined ? undefined : expectNumber(raw.generated_pending_qas, 'upload.generated_pending_qas'),
+    ingestion_task_id: expectOptionalString(raw.ingestion_task_id, 'upload.ingestion_task_id')
   };
 };
 
@@ -115,13 +152,13 @@ const parseDownloadUrl = (raw: unknown): string => {
   }
 
   if (!isObject(raw)) {
-    throw new Error('接口契约不匹配: 下载响应应为字符串或对象');
+    throw new Error('Contract mismatch: download response must be string or object');
   }
 
   const candidates = [raw.download_url, raw.url, raw.signed_url];
   const url = candidates.find((value) => typeof value === 'string');
   if (!url || typeof url !== 'string') {
-    throw new Error('接口契约不匹配: 下载响应缺少 download_url');
+    throw new Error('Contract mismatch: download response missing download_url');
   }
   return url;
 };
@@ -140,6 +177,14 @@ const buildListParams = (query: DocumentListQuery): Record<string, string | numb
 
   if (query.file_type?.trim()) {
     params.file_type = query.file_type.trim();
+  }
+
+  if (query.document_type) {
+    params.document_type = query.document_type;
+  }
+
+  if (query.knowledge_base?.trim()) {
+    params.knowledge_base = query.knowledge_base.trim();
   }
 
   if (query.status) {
@@ -171,15 +216,30 @@ export const documentApi = {
     return parseDocumentList(response.data, query.page ?? DEFAULT_PAGE, query.page_size ?? DEFAULT_PAGE_SIZE);
   },
 
-  async upload(file: File, knowledgeBase = 'default'): Promise<UploadDocumentResult> {
+  async upload(
+    file: File,
+    options: {
+      knowledgeBase?: string;
+      title?: string;
+      documentType?: DocumentType;
+    } = {}
+  ): Promise<UploadDocumentResult> {
     if (API_CONFIG.USE_MOCK) {
-      return mockDocumentApi.upload(file, knowledgeBase);
+      return mockDocumentApi.upload(file, options.knowledgeBase ?? 'default');
     }
 
     const formData = new FormData();
     formData.append('file', file);
-    if (knowledgeBase.trim()) {
-      formData.append('knowledge_base', knowledgeBase.trim());
+
+    const knowledgeBase = options.knowledgeBase?.trim() || 'default';
+    formData.append('knowledge_base', knowledgeBase);
+
+    if (options.title?.trim()) {
+      formData.append('title', options.title.trim());
+    }
+
+    if (options.documentType) {
+      formData.append('document_type', options.documentType);
     }
 
     const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_UPLOAD, formData, {
@@ -196,8 +256,15 @@ export const documentApi = {
       return mockDocumentApi.getDownloadUrl(documentId);
     }
 
-    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_DOWNLOAD(documentId));
-    return parseDownloadUrl(response.data);
+    try {
+      const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_DOWNLOAD(documentId));
+      return parseDownloadUrl(response.data);
+    } catch (error) {
+      if (isAxiosError(error) && error.response?.status === 501) {
+        throw new Error('Backend has not implemented document download endpoint yet (501).');
+      }
+      throw error;
+    }
   },
 
   async getDetail(documentId: string): Promise<KnowledgeDocument> {
@@ -215,6 +282,13 @@ export const documentApi = {
       return;
     }
 
-    await http.delete(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
+    try {
+      await http.delete(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
+    } catch (error) {
+      if (isAxiosError(error) && error.response?.status === 501) {
+        throw new Error('Backend has not implemented document delete endpoint yet (501).');
+      }
+      throw error;
+    }
   }
 };

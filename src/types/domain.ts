@@ -1,9 +1,10 @@
-﻿export type UserRole = 'admin' | 'reviewer' | 'viewer';
+﻿export type UserRole = 'admin' | 'reviewer' | 'observer';
 
 export type QAStatus = 'pending' | 'reviewed' | 'deprecated';
 export type DocumentStatus = 'indexed' | 'processing' | 'failed';
 export type DocumentSortField = 'uploaded_at' | 'file_name' | 'fragment_count' | 'qa_count';
-export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa';
+export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' | 'data';
+export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa' | 'processed_qa';
 export type SortOrder = 'asc' | 'desc';
 
 export interface QAPair {
@@ -14,6 +15,7 @@ export interface QAPair {
   scenes: string[];
   confidence: number;
   status: QAStatus;
+  assignee?: string;
   reviewer?: string;
   reviewed_at?: string;
   review_notes?: string;
@@ -56,6 +58,7 @@ export interface ReviewPayload {
   review_notes: string;
   status: QAStatus;
   version: number;
+  assignee?: string;
   reviewer?: string;
 }
 
@@ -66,6 +69,7 @@ export interface CreateQAPayload {
   scenes: string[];
   confidence: number;
   review_notes: string;
+  assignee?: string;
   reviewer?: string;
   fragments: FragmentDraft[];
 }
@@ -86,15 +90,19 @@ export interface DocumentStats {
 
 export interface KnowledgeDocument {
   document_id: string;
+  title?: string;
   file_name: string;
   file_type: string;
   file_size: number;
   uploaded_at: string;
   uploaded_by: string;
+  uploaded_by_name?: string;
+  document_type?: DocumentType;
   knowledge_base?: string;
   status: DocumentStatus;
   fragment_count: number;
   qa_count: number;
+  latest_task_status?: string;
 }
 
 export interface DocumentListQuery {
@@ -102,6 +110,8 @@ export interface DocumentListQuery {
   page_size: number;
   keyword?: string;
   file_type?: string;
+  document_type?: DocumentType | '';
+  knowledge_base?: string;
   status?: DocumentStatus | '';
   sort_by?: DocumentSortField;
   order?: SortOrder;
@@ -109,10 +119,16 @@ export interface DocumentListQuery {
 
 export interface UploadDocumentResult {
   document_id: string;
+  title?: string;
   file_name: string;
+  document_type?: DocumentType;
+  knowledge_base?: string;
   file_md5?: string;
   object_key?: string;
   status: string;
+  fragment_count?: number;
+  generated_pending_qas?: number;
+  ingestion_task_id?: string;
 }
 
 export interface MemberRankingItem {
@@ -122,6 +138,8 @@ export interface MemberRankingItem {
   display_name?: string;
   uploaded_document_count: number;
   reviewed_qa_count: number;
+  deprecated_qa_count: number;
+  processed_qa_count: number;
   last_active_at?: string;
 }
 
@@ -159,4 +177,5 @@ export interface MeInfo {
   name?: string;
   status?: string;
   created_at?: string;
+  last_active_at?: string;
 }

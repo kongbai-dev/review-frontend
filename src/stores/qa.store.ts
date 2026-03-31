@@ -1,6 +1,7 @@
-import { defineStore } from 'pinia';
+﻿import { defineStore } from 'pinia';
 import { qaApi } from '@/services/api/qa.api';
 import type { AssignPayload, CreateQAPayload, QADetail, QAFilters, QAPair, QAStats, ReviewPayload } from '@/types/domain';
+import { normalizeError } from '@/utils/error';
 
 const defaultFilters = (): QAFilters => ({
   keyword: '',
@@ -156,7 +157,7 @@ export const useQAStore = defineStore('qa', {
         const validIds = new Set(this.pending.map((item) => item.id));
         this.selectedIds = this.selectedIds.filter((id) => validIds.has(id));
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
       } finally {
         this.loading = false;
       }
@@ -168,7 +169,7 @@ export const useQAStore = defineStore('qa', {
       try {
         this.current = await qaApi.getDetail(id);
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
       } finally {
         this.loading = false;
       }
@@ -182,7 +183,7 @@ export const useQAStore = defineStore('qa', {
         this.current = null;
         await Promise.all([this.fetchPending(), this.fetchStats(), this.fetchHistory()]);
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
         throw error;
       } finally {
         this.loading = false;
@@ -197,7 +198,7 @@ export const useQAStore = defineStore('qa', {
         await Promise.all([this.fetchPending(), this.fetchStats()]);
         return created;
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
         throw error;
       } finally {
         this.loading = false;
@@ -220,7 +221,7 @@ export const useQAStore = defineStore('qa', {
         await Promise.all([this.fetchPending(), this.fetchStats()]);
         this.clearSelection();
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
         throw error;
       } finally {
         this.loading = false;
@@ -231,7 +232,7 @@ export const useQAStore = defineStore('qa', {
       try {
         this.stats = await qaApi.stats();
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
       }
     },
 
@@ -239,8 +240,9 @@ export const useQAStore = defineStore('qa', {
       try {
         this.history = await qaApi.history(limit);
       } catch (error) {
-        this.error = (error as Error).message;
+        this.error = normalizeError(error);
       }
     }
   }
 });
+

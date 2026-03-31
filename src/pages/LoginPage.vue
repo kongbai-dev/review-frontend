@@ -42,8 +42,8 @@ const error = ref('');
 const submitting = ref(false);
 
 const form = reactive<LoginPayload>({
-  username: 'reviewer-01',
-  password: '123456'
+  username: 'reviewer',
+  password: 'reviewer123456'
 });
 
 const onSubmit = async (): Promise<void> => {
@@ -59,3 +59,4 @@ const onSubmit = async (): Promise<void> => {
   }
 };
 </script>
+

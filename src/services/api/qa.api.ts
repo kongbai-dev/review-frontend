@@ -1,3 +1,4 @@
+﻿import { isAxiosError } from 'axios';
 import { API_CONFIG } from '@/config';
 import { http } from '@/services/http';
 import { mockQaApi } from '@/services/mock/review.mock';
@@ -11,7 +12,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const expectString = (value: unknown, path: string): string => {
   if (typeof value !== 'string') {
-    throw new Error(`接口契约不匹配: ${path} 应为 string`);
+    throw new Error(`Contract mismatch: ${path} must be string`);
   }
   return value;
 };
@@ -21,21 +22,21 @@ const expectOptionalString = (value: unknown): string | undefined => {
     return undefined;
   }
   if (typeof value !== 'string') {
-    throw new Error('接口契约不匹配: 可选字符串字段类型错误');
+    throw new Error('Contract mismatch: optional field must be string');
   }
   return value;
 };
 
 const expectNumber = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`接口契约不匹配: ${path} 应为 number`);
+    throw new Error(`Contract mismatch: ${path} must be number`);
   }
   return value;
 };
 
 const expectStringArray = (value: unknown, path: string): string[] => {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new Error(`接口契约不匹配: ${path} 应为 string[]`);
+    throw new Error(`Contract mismatch: ${path} must be string[]`);
   }
   return value;
 };
@@ -45,16 +46,30 @@ const expectStatus = (value: unknown, path: string): QAStatus => {
   if (text === 'pending' || text === 'reviewed' || text === 'deprecated') {
     return text;
   }
-  throw new Error(`接口契约不匹配: ${path} 状态值非法`);
+  throw new Error(`Contract mismatch: ${path} has invalid status`);
+};
+
+const extractId = (raw: Record<string, unknown>, path: string): string => {
+  const fromId = raw.id;
+  if (typeof fromId === 'string' && fromId.trim()) {
+    return fromId;
+  }
+
+  const fromPairId = raw.qa_pair_id;
+  if (typeof fromPairId === 'string' && fromPairId.trim()) {
+    return fromPairId;
+  }
+
+  throw new Error(`Contract mismatch: ${path}.id or ${path}.qa_pair_id is required`);
 };
 
 const parseFragment = (raw: unknown, index: number): Fragment => {
   if (!isObject(raw)) {
-    throw new Error(`接口契约不匹配: fragments[${index}] 应为对象`);
+    throw new Error(`Contract mismatch: fragments[${index}] must be object`);
   }
 
   return {
-    id: expectString(raw.id, `fragments[${index}].id`),
+    id: extractId(raw, `fragments[${index}]`),
     fragment_type: expectString(raw.fragment_type, `fragments[${index}].fragment_type`) as Fragment['fragment_type'],
     content: expectString(raw.content, `fragments[${index}].content`),
     page_start: raw.page_start === undefined || raw.page_start === null ? undefined : expectNumber(raw.page_start, `fragments[${index}].page_start`),
@@ -65,21 +80,25 @@ const parseFragment = (raw: unknown, index: number): Fragment => {
 
 const parseQAPair = (raw: unknown, path = 'item'): QAPair => {
   if (!isObject(raw)) {
-    throw new Error(`接口契约不匹配: ${path} 应为对象`);
+    throw new Error(`Contract mismatch: ${path} must be object`);
   }
 
+  const assignee = expectOptionalString(raw.assignee);
+  const reviewer = expectOptionalString(raw.reviewer);
+
   return {
-    id: expectString(raw.id, `${path}.id`),
+    id: extractId(raw, path),
     question: expectString(raw.question, `${path}.question`),
     answer: expectString(raw.answer, `${path}.answer`),
     topics: expectStringArray(raw.topics, `${path}.topics`),
     scenes: expectStringArray(raw.scenes, `${path}.scenes`),
     confidence: expectNumber(raw.confidence, `${path}.confidence`),
     status: expectStatus(raw.status, `${path}.status`),
-    reviewer: expectOptionalString(raw.reviewer),
+    assignee,
+    reviewer: assignee ?? reviewer,
     reviewed_at: expectOptionalString(raw.reviewed_at),
     review_notes: expectOptionalString(raw.review_notes),
-    version: expectNumber(raw.version, `${path}.version`)
+    version: raw.version === undefined || raw.version === null ? 1 : expectNumber(raw.version, `${path}.version`)
   };
 };
 
@@ -92,7 +111,7 @@ const parseListResponse = (raw: unknown, endpoint: string, itemPath: string): Li
   }
 
   if (!isObject(raw) || !Array.isArray(raw.items)) {
-    throw new Error(`接口契约不匹配: ${endpoint} 响应应为数组或 { items, total }`);
+    throw new Error(`Contract mismatch: ${endpoint} must return array or { items, total }`);
   }
 
   return {
@@ -101,14 +120,10 @@ const parseListResponse = (raw: unknown, endpoint: string, itemPath: string): Li
   };
 };
 
-const parsePendingResponse = (raw: unknown): QAPair[] => {
-  return parseListResponse(raw, 'GET /qa/pending', 'pending').items;
-};
-
 const parseDetailResponse = (raw: unknown): QADetail => {
   const qa = parseQAPair(raw, 'detail');
   if (!isObject(raw) || !Array.isArray(raw.fragments)) {
-    throw new Error('接口契约不匹配: detail.fragments 应为数组');
+    throw new Error('Contract mismatch: detail.fragments must be array');
   }
 
   return {
@@ -119,7 +134,7 @@ const parseDetailResponse = (raw: unknown): QADetail => {
 
 const parseStatsResponse = (raw: unknown): QAStats => {
   if (!isObject(raw)) {
-    throw new Error('接口契约不匹配: GET /qa/stats 响应应为对象');
+    throw new Error('Contract mismatch: GET /qa-pairs/stats must return object');
   }
 
   return {
@@ -129,8 +144,54 @@ const parseStatsResponse = (raw: unknown): QAStats => {
   };
 };
 
-const parseHistoryResponse = (raw: unknown): QAPair[] => {
-  return parseListResponse(raw, 'GET /qa-pairs', 'history').items;
+const extractVersionConflictMessage = (error: unknown): string | null => {
+  if (!isAxiosError(error) || error.response?.status !== 409) {
+    return null;
+  }
+
+  const payload = error.response.data;
+  if (!isObject(payload)) {
+    return 'Version conflict: data has been updated by someone else';
+  }
+
+  const detail = payload.detail;
+  if (!isObject(detail)) {
+    return 'Version conflict: data has been updated by someone else';
+  }
+
+  const currentVersion = detail.current_version;
+  if (typeof currentVersion === 'number') {
+    return `Version conflict: current version is ${currentVersion}. Please refresh and retry.`;
+  }
+
+  return 'Version conflict: data has been updated by someone else';
+};
+
+const buildReviewPayload = (payload: ReviewPayload): ReviewPayload & { assignee?: string } => ({
+  question: payload.question,
+  answer: payload.answer,
+  topics: payload.topics,
+  scenes: payload.scenes,
+  confidence: payload.confidence,
+  review_notes: payload.review_notes,
+  status: payload.status,
+  version: payload.version,
+  assignee: payload.assignee ?? payload.reviewer
+});
+
+const fetchQaList = async (params: Record<string, string | number>): Promise<ListResponse<QAPair>> => {
+  const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.QA_PAIRS, { params });
+  return parseListResponse(response.data, 'GET /qa-pairs', 'qa_pairs');
+};
+
+const parseHistory = (reviewed: QAPair[], deprecated: QAPair[], limit: number): QAPair[] => {
+  return [...reviewed, ...deprecated]
+    .sort((left, right) => {
+      const leftTime = left.reviewed_at ?? '';
+      const rightTime = right.reviewed_at ?? '';
+      return rightTime.localeCompare(leftTime);
+    })
+    .slice(0, limit);
 };
 
 export const qaApi = {
@@ -139,16 +200,22 @@ export const qaApi = {
       return mockQaApi.getPending(limit);
     }
 
-    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.QA_PENDING, {
-      params: { limit }
+    const list = await fetchQaList({
+      status: 'pending',
+      page: 1,
+      page_size: limit,
+      sort_by: 'updated_at',
+      order: 'desc'
     });
-    return parsePendingResponse(response.data);
+
+    return list.items;
   },
 
   async getDetail(id: string): Promise<QADetail> {
     if (API_CONFIG.USE_MOCK) {
       return mockQaApi.getDetail(id);
     }
+
     const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.QA_RESOURCE(id));
     return parseDetailResponse(response.data);
   },
@@ -157,8 +224,17 @@ export const qaApi = {
     if (API_CONFIG.USE_MOCK) {
       return mockQaApi.review(id, payload);
     }
-    const response = await http.put<unknown>(API_CONFIG.ENDPOINTS.QA_RESOURCE(id), payload);
-    return parseDetailResponse(response.data);
+
+    try {
+      const response = await http.put<unknown>(API_CONFIG.ENDPOINTS.QA_RESOURCE(id), buildReviewPayload(payload));
+      return parseDetailResponse(response.data);
+    } catch (error) {
+      const conflictMessage = extractVersionConflictMessage(error);
+      if (conflictMessage) {
+        throw new Error(conflictMessage);
+      }
+      throw error;
+    }
   },
 
   async assign(payload: AssignPayload): Promise<void> {
@@ -167,27 +243,14 @@ export const qaApi = {
       return;
     }
 
-    for (const qaId of payload.qa_ids) {
-      const current = await this.getDetail(qaId);
-      const updatePayload: ReviewPayload = {
-        question: current.question,
-        answer: current.answer,
-        topics: current.topics,
-        scenes: current.scenes,
-        confidence: current.confidence,
-        review_notes: current.review_notes || '任务分配更新',
-        status: 'pending',
-        version: current.version,
-        reviewer: payload.assignee
-      };
-      await this.review(qaId, updatePayload);
-    }
+    await http.post(API_CONFIG.ENDPOINTS.QA_ASSIGNMENTS, payload);
   },
 
   async stats(): Promise<QAStats> {
     if (API_CONFIG.USE_MOCK) {
       return mockQaApi.stats();
     }
+
     const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.QA_STATS);
     return parseStatsResponse(response.data);
   },
@@ -196,10 +259,13 @@ export const qaApi = {
     if (API_CONFIG.USE_MOCK) {
       return mockQaApi.history(limit);
     }
-    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.QA_PAIRS, {
-      params: { page: 1, page_size: limit }
-    });
-    return parseHistoryResponse(response.data);
+
+    const [reviewed, deprecated] = await Promise.all([
+      fetchQaList({ status: 'reviewed', page: 1, page_size: limit, sort_by: 'reviewed_at', order: 'desc' }),
+      fetchQaList({ status: 'deprecated', page: 1, page_size: limit, sort_by: 'reviewed_at', order: 'desc' })
+    ]);
+
+    return parseHistory(reviewed.items, deprecated.items, limit);
   },
 
   async create(payload: CreateQAPayload): Promise<QADetail> {
@@ -208,7 +274,7 @@ export const qaApi = {
     }
 
     if (!API_CONFIG.ENDPOINTS.QA_CREATE) {
-      throw new Error('当前后端未配置人工新增问答对接口，请在 .env 中设置 VITE_QA_CREATE_ENDPOINT');
+      throw new Error('Backend has not enabled manual create QA endpoint. Set VITE_QA_CREATE_ENDPOINT to enable it.');
     }
 
     const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.QA_CREATE, payload);

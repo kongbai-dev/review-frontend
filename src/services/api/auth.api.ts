@@ -1,26 +1,82 @@
-﻿import { API_CONFIG } from '@/config';
+﻿import { isAxiosError } from 'axios';
+import { API_CONFIG } from '@/config';
 import { http } from '@/services/http';
 import type { LoginPayload, MeInfo, SessionInfo, UserRole } from '@/types/domain';
 
 const normalizeRole = (role: string): UserRole => {
-  if (role === 'admin' || role === 'reviewer' || role === 'viewer') {
+  if (role === 'admin' || role === 'reviewer' || role === 'observer') {
     return role;
   }
 
-  if (role === 'observer') {
-    return 'viewer';
+  // Backward compatibility for old client cache / old backend value.
+  if (role === 'viewer') {
+    return 'observer';
   }
 
-  throw new Error(`未知角色: ${role}`);
+  throw new Error(`Unknown role: ${role}`);
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const extractErrorMessage = (error: unknown, fallback: string): string => {
+  if (isAxiosError(error)) {
+    const status = error.response?.status;
+    const data = error.response?.data;
+
+    if (isObject(data)) {
+      const detail = data.detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail;
+      }
+      if (isObject(detail) && typeof detail.message === 'string' && detail.message.trim()) {
+        return detail.message;
+      }
+      if (typeof data.message === 'string' && data.message.trim()) {
+        return data.message;
+      }
+    }
+
+    if (status === 401) {
+      return 'Invalid username or password';
+    }
+
+    if (status === 403) {
+      return 'Account is disabled';
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+const parseUserInfo = (raw: unknown): MeInfo => {
+  if (!isObject(raw)) {
+    throw new Error('Invalid user payload');
+  }
+
+  if (typeof raw.id !== 'number' || typeof raw.username !== 'string' || typeof raw.role !== 'string') {
+    throw new Error('User payload missing required fields');
+  }
+
+  return {
+    id: raw.id,
+    username: raw.username,
+    role: normalizeRole(raw.role),
+    name: typeof raw.name === 'string' ? raw.name : undefined,
+    status: typeof raw.status === 'string' ? raw.status : undefined,
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : undefined,
+    last_active_at: typeof raw.last_active_at === 'string' ? raw.last_active_at : undefined
+  };
+};
+
 export const authApi = {
   async login(payload: LoginPayload): Promise<SessionInfo> {
     if (!payload.username?.trim() || !payload.password?.trim()) {
-      throw new Error('用户名和密码不能为空');
+      throw new Error('Username and password are required');
     }
 
     if (API_CONFIG.USE_MOCK) {
@@ -31,29 +87,44 @@ export const authApi = {
       };
     }
 
-    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.AUTH_LOGIN, {
-      username: payload.username,
-      password: payload.password
-    });
+    try {
+      const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.AUTH_LOGIN, {
+        username: payload.username,
+        password: payload.password
+      });
 
-    const data = response.data;
-    if (!isObject(data)) {
-      throw new Error('登录响应格式错误');
+      const data = response.data;
+      if (!isObject(data)) {
+        throw new Error('Invalid login response format');
+      }
+
+      if (typeof data.token !== 'string' || !data.token.trim()) {
+        throw new Error('Login response missing token');
+      }
+
+      // Contract response: { token, user: {...} }
+      if (isObject(data.user)) {
+        const user = parseUserInfo(data.user);
+        return {
+          token: data.token,
+          username: user.username,
+          role: user.role
+        };
+      }
+
+      // Backward compatibility for legacy responses: { token, username, role }
+      if (typeof data.username === 'string' && typeof data.role === 'string') {
+        return {
+          token: data.token,
+          username: data.username,
+          role: normalizeRole(data.role)
+        };
+      }
+
+      throw new Error('Login response missing user payload');
+    } catch (error) {
+      throw new Error(extractErrorMessage(error, 'Login failed'));
     }
-
-    const token = data.token;
-    const username = data.username;
-    const role = data.role;
-
-    if (typeof token !== 'string' || typeof username !== 'string' || typeof role !== 'string') {
-      throw new Error('登录响应字段缺失');
-    }
-
-    return {
-      token,
-      username,
-      role: normalizeRole(role)
-    };
   },
 
   async me(): Promise<MeInfo> {
@@ -67,25 +138,12 @@ export const authApi = {
       };
     }
 
-    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.AUTH_ME);
-    const data = response.data;
-
-    if (!isObject(data)) {
-      throw new Error('用户信息响应格式错误');
+    try {
+      const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.AUTH_ME);
+      return parseUserInfo(response.data);
+    } catch (error) {
+      throw new Error(extractErrorMessage(error, 'Failed to load current user'));
     }
-
-    if (typeof data.id !== 'number' || typeof data.username !== 'string' || typeof data.role !== 'string') {
-      throw new Error('用户信息字段缺失');
-    }
-
-    return {
-      id: data.id,
-      username: data.username,
-      role: normalizeRole(data.role),
-      name: typeof data.name === 'string' ? data.name : undefined,
-      status: typeof data.status === 'string' ? data.status : undefined,
-      created_at: typeof data.created_at === 'string' ? data.created_at : undefined
-    };
   },
 
   async logout(): Promise<void> {
@@ -93,6 +151,10 @@ export const authApi = {
       return;
     }
 
-    await http.post(API_CONFIG.ENDPOINTS.AUTH_LOGOUT, {});
+    try {
+      await http.post(API_CONFIG.ENDPOINTS.AUTH_LOGOUT, {});
+    } catch (error) {
+      throw new Error(extractErrorMessage(error, 'Logout failed'));
+    }
   }
 };

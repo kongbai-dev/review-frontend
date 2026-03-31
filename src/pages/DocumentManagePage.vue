@@ -189,7 +189,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import DocumentStatsCards from '@/components/business/DocumentStatsCards.vue';
 import DocumentTable from '@/components/business/DocumentTable.vue';
 import DocumentUploadPanel from '@/components/business/DocumentUploadPanel.vue';
 import { useDocumentStore } from '@/stores/document.store';
@@ -314,3 +313,4 @@ onMounted(async () => {
   syncFiltersFromStore();
 });
 </script>
+

@@ -1,4 +1,4 @@
-接下来我需要你做的是为审核前端的登录界面构建一个简易的登录用后端
+﻿接下来我需要你做的是为审核前端的登录界面构建一个简易的登录用后端
 
 request: 
 
@@ -19,9 +19,9 @@ request:
 3. 登录接口:
 
    ```
-   POST /auth/login
-   GET /auth/me
-   POST /auth/logout
+   POST /api/v1/auth/login
+   GET /api/v1/auth/me
+   POST /api/v1/auth/logout
    ```
 
 4. JWT token:登录成功后后端返回token,前端后面请求接口时带上
@@ -41,4 +41,5 @@ request:
    - 什么时间改的
 
 postgreSOL构建
+
 

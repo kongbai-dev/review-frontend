@@ -19,37 +19,37 @@ const routes = [
         path: 'reviews',
         name: 'reviews',
         component: () => import('@/pages/ReviewQueuePage.vue'),
-        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
         path: 'reviews/:id',
         name: 'review-detail',
         component: () => import('@/pages/ReviewDetailPage.vue'),
-        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('@/pages/DashboardPage.vue'),
-        meta: { roles: ['admin', 'reviewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
         path: 'documents',
         name: 'documents',
         component: () => import('@/pages/DocumentManagePage.vue'),
-        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
         path: 'members',
         name: 'members',
         component: () => import('@/pages/MemberRankingPage.vue'),
-        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
         path: 'history',
         name: 'history',
         component: () => import('@/pages/HistoryPage.vue'),
-        meta: { roles: ['admin', 'reviewer', 'viewer'] as UserRole[] }
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       }
     ]
   },
@@ -84,3 +84,4 @@ router.beforeEach(async (to) => {
 
   return true;
 });
+

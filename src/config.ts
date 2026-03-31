@@ -1,4 +1,4 @@
-﻿export type UserRole = 'admin' | 'reviewer' | 'viewer';
+export type UserRole = 'admin' | 'reviewer' | 'observer';
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
   if (value === undefined) return fallback;
@@ -23,10 +23,10 @@ export const API_CONFIG = {
     DOCUMENT_RESOURCE: (id: string) => `/knowledge/documents/${id}`,
     DOCUMENT_DOWNLOAD: (id: string) => `/knowledge/documents/${id}/download`,
     MEMBER_RANKINGS: '/analytics/member-rankings',
-    QA_PENDING: '/qa/pending',
-    QA_RESOURCE: (id: string) => `/qa/${id}`,
-    QA_STATS: '/qa/stats',
     QA_PAIRS: '/qa-pairs',
+    QA_RESOURCE: (id: string) => `/qa-pairs/${id}`,
+    QA_STATS: '/qa-pairs/stats',
+    QA_ASSIGNMENTS: '/qa-pairs/assignments',
     QA_CREATE: import.meta.env.VITE_QA_CREATE_ENDPOINT || ''
   }
 } as const;

@@ -6,6 +6,7 @@
         <option value="default">成员默认排序</option>
         <option value="uploaded_docs">按上传文档数</option>
         <option value="reviewed_qa">按审核 QA 数</option>
+        <option value="processed_qa">按处理 QA 总数</option>
       </select>
     </label>
 
@@ -18,7 +19,7 @@
     </label>
 
     <div class="min-w-[180px] flex-1 self-end pb-1 text-xs text-[var(--color-text-secondary)]">
-      默认规则为 `username asc`，切换排序时页面会优先本地重排，刷新时再与后端结果对齐。
+      默认规则为 `username asc`，切换排序时页面会先本地重排，再与后端返回结果对齐。
     </div>
   </section>
 </template>

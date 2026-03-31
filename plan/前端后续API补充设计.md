@@ -1,4 +1,4 @@
-# 前端后续 API 补充设计
+﻿# 前端后续 API 补充设计
 
 ## 1. 目的
 
@@ -281,16 +281,13 @@
 
 原因很直接：
 
-当前前端代码仍然依赖这些非规范接口：
+当前前端代码仍然依赖这些历史接口：
 
-- `/auth/login`
-- `/auth/me`
 - `/qa/pending`
 - `/qa/{id}`
 - `/qa/stats`
 
-如果不把它们补到统一规范里，后面会一直存在两套 API。
-
+同时认证能力也需要统一收口到 `/api/v1/auth/*`，否则后面会一直存在混用和歧义。
 ### 4.3.1 获取待审核 / 已审核 QA 列表
 
 `GET /api/v1/qa-pairs`
@@ -510,8 +507,17 @@
 ```json
 {
   "token": "jwt-or-session-token",
-  "username": "alice",
-  "role": "reviewer"
+  "token_type": "bearer",
+  "expires_in": 28799,
+  "user": {
+    "id": 1,
+    "username": "alice",
+    "name": "Alice",
+    "role": "reviewer",
+    "status": "active",
+    "created_at": "2026-03-01T00:00:00Z",
+    "last_active_at": "2026-03-01T08:30:00Z"
+  }
 }
 ```
 
@@ -578,22 +584,22 @@
 
 ```ts
 ENDPOINTS: {
-  AUTH_LOGIN: '/auth/login',
-  AUTH_ME: '/auth/me',
-  AUTH_LOGOUT: '/auth/logout',
+  AUTH_LOGIN: '/api/v1/auth/login',
+  AUTH_ME: '/api/v1/auth/me',
+  AUTH_LOGOUT: '/api/v1/auth/logout',
 
-  DOCUMENT_STATS: '/knowledge/documents/stats',
-  DOCUMENT_LIST: '/knowledge/documents',
-  DOCUMENT_UPLOAD: '/knowledge/documents',
-  DOCUMENT_RESOURCE: (id: string) => `/knowledge/documents/${id}`,
-  DOCUMENT_DOWNLOAD: (id: string) => `/knowledge/documents/${id}/download`,
+  DOCUMENT_STATS: '/api/v1/knowledge/documents/stats',
+  DOCUMENT_LIST: '/api/v1/knowledge/documents',
+  DOCUMENT_UPLOAD: '/api/v1/knowledge/documents',
+  DOCUMENT_RESOURCE: (id: string) => `/api/v1/knowledge/documents/${id}`,
+  DOCUMENT_DOWNLOAD: (id: string) => `/api/v1/knowledge/documents/${id}/download`,
 
-  MEMBER_RANKINGS: '/analytics/member-rankings',
+  MEMBER_RANKINGS: '/api/v1/analytics/member-rankings',
 
-  QA_PAIRS: '/qa-pairs',
-  QA_RESOURCE: (id: string) => `/qa-pairs/${id}`,
-  QA_STATS: '/qa-pairs/stats',
-  QA_ASSIGNMENTS: '/qa-pairs/assignments'
+  QA_PAIRS: '/api/v1/qa-pairs',
+  QA_RESOURCE: (id: string) => `/api/v1/qa-pairs/${id}`,
+  QA_STATS: '/api/v1/qa-pairs/stats',
+  QA_ASSIGNMENTS: '/api/v1/qa-pairs/assignments'
 }
 ```
 
@@ -629,3 +635,4 @@ ENDPOINTS: {
 3. 现有审核前端缺少和规范一致的 QA 工作台接口
 
 如果按这份补充设计推进，前端后面可以统一收口到 `/api/v1` 下的一套规范，不会再长期并存“审核接口一套、知识库接口一套”的问题。
+
