@@ -4,6 +4,8 @@ export type QAStatus = 'pending' | 'reviewed' | 'deprecated';
 export type DocumentStatus = 'indexed' | 'processing' | 'failed';
 export type DocumentSortField = 'uploaded_at' | 'file_name' | 'fragment_count' | 'qa_count';
 export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' | 'data';
+export type UploadMode = 'sync' | 'batch';
+export type QAGenerationMode = 'append' | 'replace';
 export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa' | 'processed_qa';
 export type SortOrder = 'asc' | 'desc';
 
@@ -129,6 +131,79 @@ export interface UploadDocumentResult {
   fragment_count?: number;
   generated_pending_qas?: number;
   ingestion_task_id?: string;
+  sync_mode?: UploadMode;
+  sync_status?: string;
+}
+
+export interface UploadDocumentPairPayload {
+  file: File;
+  metadata_csv: File;
+  upload_mode?: UploadMode;
+  knowledge_base?: string;
+  document_type?: DocumentType;
+  title?: string;
+  subdir: string;
+}
+
+export type DocumentUploadQueueItemStatus = 'ready' | 'uploading' | 'success' | 'error' | 'conflict';
+
+export interface DocumentUploadQueueItem extends UploadDocumentPairPayload {
+  id: string;
+  status: DocumentUploadQueueItemStatus;
+  message?: string;
+  response?: UploadDocumentResult;
+}
+
+export interface BatchSyncStartPayload {
+  min_batch_size?: number;
+  max_wait_seconds?: number;
+  max_docs?: number;
+  max_workers?: number;
+  include_failed?: boolean;
+}
+
+export interface BatchSyncTaskStatus {
+  task_id: string;
+  status: string;
+  queued_count: number;
+  processed_count: number;
+  success_count: number;
+  failed_count: number;
+  message: string;
+  started_at?: string;
+  finished_at?: string;
+  failed_documents: string[];
+}
+
+export interface QAGenerationPayload {
+  document_id: string;
+  target_count?: number;
+  mode?: QAGenerationMode;
+}
+
+export interface QAGenerationStartResult {
+  task_id: string;
+  document_id: string;
+  status: string;
+  generated_qas: number;
+  message: string;
+}
+
+export interface IngestionTaskStatus {
+  id: string;
+  document_id: string;
+  task_type: string;
+  status: string;
+  stage: string;
+  created_by_user_id?: number;
+  total_fragments: number;
+  total_generated_qas: number;
+  retry_count: number;
+  error_message?: string;
+  started_at: string;
+  finished_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MemberRankingItem {

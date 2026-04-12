@@ -1,9 +1,18 @@
-﻿<template>
+<template>
   <section :class="wrapperClass">
     <div class="overflow-x-auto">
       <table class="min-w-full border-separate border-spacing-y-2 text-sm">
         <thead>
           <tr class="text-left text-xs uppercase tracking-[0.08em] text-[color:color-mix(in_srgb,var(--color-text-secondary)_88%,transparent)]">
+            <th v-if="selectable" class="px-3 py-2 font-medium whitespace-nowrap">
+              <input
+                type="checkbox"
+                class="h-4 w-4 rounded border border-[var(--color-border)]"
+                :checked="allSelected"
+                :disabled="items.length === 0 || loading"
+                @change="toggleAllSelection"
+              />
+            </th>
             <th class="px-3 py-2 font-medium whitespace-nowrap">文档名称</th>
             <th class="px-3 py-2 font-medium whitespace-nowrap">上传时间</th>
             <th class="px-3 py-2 font-medium whitespace-nowrap">上传用户</th>
@@ -22,7 +31,16 @@
             :key="item.document_id"
             class="rounded-[1.15rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_35%,transparent)]"
           >
-            <td class="rounded-l-[1rem] px-3 py-3 align-top">
+            <td v-if="selectable" class="px-3 py-3 align-top">
+              <input
+                type="checkbox"
+                class="h-4 w-4 rounded border border-[var(--color-border)]"
+                :checked="isSelected(item.document_id)"
+                :disabled="loading"
+                @change="toggleSelection(item.document_id)"
+              />
+            </td>
+            <td class="px-3 py-3 align-top" :class="selectable ? '' : 'rounded-l-[1rem]'">
               <div class="max-w-[260px]">
                 <p class="font-medium">{{ item.file_name }}</p>
                 <p class="text-muted mt-1 text-xs">{{ item.document_id }}</p>
@@ -78,14 +96,18 @@ const props = withDefaults(
     total: number;
     page: number;
     pageSize: number;
+    selectedIds?: string[];
     loading?: boolean;
     downloadingId?: string;
     embedded?: boolean;
+    selectable?: boolean;
   }>(),
   {
+    selectedIds: () => [],
     loading: false,
     downloadingId: '',
-    embedded: false
+    embedded: false,
+    selectable: true
   }
 );
 
@@ -93,6 +115,7 @@ const emit = defineEmits<{
   (e: 'download', documentItem: KnowledgeDocument): void;
   (e: 'update:page', value: number): void;
   (e: 'update:pageSize', value: number): void;
+  (e: 'update:selectedIds', value: string[]): void;
 }>();
 
 const wrapperClass = computed(() =>
@@ -104,6 +127,38 @@ const emptyClass = computed(() =>
 );
 
 const paginationClass = computed(() => (props.embedded ? 'mt-4' : 'mt-4'));
+
+const selectedSet = computed(() => new Set(props.selectedIds));
+
+const allSelected = computed(() =>
+  props.items.length > 0 && props.items.every((item) => selectedSet.value.has(item.document_id))
+);
+
+const isSelected = (documentId: string): boolean => selectedSet.value.has(documentId);
+
+const toggleSelection = (documentId: string): void => {
+  const next = new Set(props.selectedIds);
+  if (next.has(documentId)) {
+    next.delete(documentId);
+  } else {
+    next.add(documentId);
+  }
+  emit('update:selectedIds', Array.from(next));
+};
+
+const toggleAllSelection = (): void => {
+  if (allSelected.value) {
+    const keep = props.selectedIds.filter((id) => !props.items.some((item) => item.document_id === id));
+    emit('update:selectedIds', keep);
+    return;
+  }
+
+  const next = new Set(props.selectedIds);
+  props.items.forEach((item) => {
+    next.add(item.document_id);
+  });
+  emit('update:selectedIds', Array.from(next));
+};
 
 const formatDate = (value: string): string => new Date(value).toLocaleString();
 

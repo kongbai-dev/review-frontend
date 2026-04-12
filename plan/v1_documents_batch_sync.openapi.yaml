@@ -1,0 +1,590 @@
+openapi: 3.0.3
+info:
+  title: AI TCAD Backend API - Documents Batch Sync
+  version: "2026-04-12"
+  description: >
+    Contract for document upload decoupling, batch MinIO sync, and manual QA generation.
+    Source of truth is testagent/backend_api/routers/v1_documents.py.
+servers:
+  - url: /
+tags:
+  - name: v1-documents-batch
+    description: Upload + batch sync + manual QA generation endpoints.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/knowledge/documents:
+    post:
+      tags:
+        - v1-documents-batch
+      summary: Upload a document with metadata CSV
+      operationId: uploadKnowledgeDocument
+      description: |
+        Uploads a document and same-basename metadata CSV.
+
+        Business rules enforced by backend:
+        1. `file` and `metadata_csv` must share same basename (e.g. `a.pdf` + `a.csv`).
+        2. `metadata_csv` must be UTF-8 and include first-row fields `title`, `year`, `type`.
+        3. `upload_mode=sync` uploads MinIO immediately; `upload_mode=batch` queues for batch sync.
+        4. Upload does not auto-generate QA pairs.
+      x-required-roles:
+        - admin
+        - reviewer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DocumentUploadRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentUploadResponse"
+              examples:
+                syncMode:
+                  summary: sync mode response
+                  value:
+                    document_id: "6f58d8f7-2435-49de-983d-6ca31a7f3e88"
+                    title: "TCAD Handbook"
+                    file_name: "tcad_handbook.pdf"
+                    document_type: "manual"
+                    knowledge_base: "default"
+                    status: "synced"
+                    fragment_count: 0
+                    generated_pending_qas: 0
+                    ingestion_task_id: "b4f8985a-151e-431d-a444-630b94380710"
+                    sync_mode: "sync"
+                    sync_status: "synced"
+                batchMode:
+                  summary: batch mode response
+                  value:
+                    document_id: "ab9c8a72-6c98-4a35-abd9-6d99613c43fb"
+                    title: "IEDM 2025 Notes"
+                    file_name: "iedm_2025_notes.pdf"
+                    document_type: "conference"
+                    knowledge_base: "default"
+                    status: "sync_pending"
+                    fragment_count: 0
+                    generated_pending_qas: 0
+                    ingestion_task_id: "5ce2de6e-9a55-4f88-ae6b-e3ef3fb8a73f"
+                    sync_mode: "batch"
+                    sync_status: "sync_pending"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/v1/knowledge/documents/batch-sync/start:
+    post:
+      tags:
+        - v1-documents-batch
+      summary: Start a batch sync task
+      operationId: startBatchSync
+      description: |
+        Starts asynchronous synchronization from local files to MinIO.
+        Candidate documents are selected by backend from `sync_pending` and optionally `sync_failed`.
+      x-required-roles:
+        - admin
+        - reviewer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchSyncStartRequest"
+      responses:
+        "200":
+          description: Task queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchSyncStartResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+  /api/v1/knowledge/documents/batch-sync/tasks/{task_id}:
+    get:
+      tags:
+        - v1-documents-batch
+      summary: Query batch sync task status
+      operationId: getBatchSyncTask
+      x-required-roles:
+        - admin
+        - reviewer
+        - observer
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Batch sync task ID.
+      responses:
+        "200":
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchSyncTaskStatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /api/v1/knowledge/documents/qa-generation/start:
+    post:
+      tags:
+        - v1-documents-batch
+      summary: Generate QA pairs manually for one document
+      operationId: startQAGeneration
+      x-required-roles:
+        - admin
+        - reviewer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QAGenerationRequest"
+      responses:
+        "200":
+          description: QA generation completed in current implementation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QAGenerationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGatewayError"
+  /api/v1/knowledge/documents/qa-generation/tasks/{task_id}:
+    get:
+      tags:
+        - v1-documents-batch
+      summary: Query manual QA generation task status
+      operationId: getQAGenerationTask
+      x-required-roles:
+        - admin
+        - reviewer
+        - observer
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ingestion task ID for task_type=qa_generation.
+      responses:
+        "200":
+          description: QA generation task status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionTaskStatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: authentication required
+    ForbiddenError:
+      description: Authenticated but permission denied.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: permission denied
+    NotFoundError:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: document not found
+    ConflictError:
+      description: Conflict with existing data.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: document already exists
+    UnprocessableEntityError:
+      description: Parameter validation or business rule validation failed.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ApiError"
+              - $ref: "#/components/schemas/HTTPValidationError"
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: document upload failed
+    BadGatewayError:
+      description: Upstream dependency failed (for example MinIO).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: failed to fetch document from MinIO
+  schemas:
+    DocumentType:
+      type: string
+      enum:
+        - paper
+        - conference
+        - book
+        - manual
+        - code
+        - data
+    UploadMode:
+      type: string
+      enum:
+        - sync
+        - batch
+      default: sync
+    QAGenerationMode:
+      type: string
+      enum:
+        - append
+        - replace
+      default: append
+    DocumentUploadRequest:
+      type: object
+      required:
+        - file
+        - metadata_csv
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Document file. Must be non-empty.
+        metadata_csv:
+          type: string
+          format: binary
+          description: Metadata CSV. Must be UTF-8 and share basename with `file`.
+        title:
+          type: string
+          description: Optional title override. Defaults to CSV title/file title.
+        document_type:
+          $ref: "#/components/schemas/DocumentType"
+        type:
+          $ref: "#/components/schemas/DocumentType"
+        upload_mode:
+          $ref: "#/components/schemas/UploadMode"
+        knowledge_base:
+          type: string
+          default: default
+        subdir:
+          type: string
+          nullable: true
+      description: >
+        `document_type` and `type` are compatibility fields. Backend precedence:
+        document_type > type > metadata_csv.type > "manual".
+    DocumentUploadResponse:
+      type: object
+      required:
+        - document_id
+        - title
+        - file_name
+        - document_type
+        - knowledge_base
+        - status
+        - fragment_count
+        - generated_pending_qas
+        - ingestion_task_id
+      properties:
+        document_id:
+          type: string
+        title:
+          type: string
+        file_name:
+          type: string
+        document_type:
+          type: string
+        knowledge_base:
+          type: string
+        status:
+          type: string
+        fragment_count:
+          type: integer
+          format: int32
+        generated_pending_qas:
+          type: integer
+          format: int32
+        ingestion_task_id:
+          type: string
+        sync_mode:
+          type: string
+          nullable: true
+        sync_status:
+          type: string
+          nullable: true
+    BatchSyncStartRequest:
+      type: object
+      properties:
+        min_batch_size:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 10
+        max_wait_seconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          default: 300
+        max_docs:
+          type: integer
+          minimum: 1
+          maximum: 2000
+          default: 200
+        max_workers:
+          type: integer
+          minimum: 1
+          maximum: 64
+          default: 8
+        include_failed:
+          type: boolean
+          default: true
+    BatchSyncStartResponse:
+      type: object
+      required:
+        - task_id
+        - status
+        - queued_count
+        - processed_count
+        - success_count
+        - failed_count
+        - message
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        queued_count:
+          type: integer
+          format: int32
+        processed_count:
+          type: integer
+          format: int32
+        success_count:
+          type: integer
+          format: int32
+        failed_count:
+          type: integer
+          format: int32
+        message:
+          type: string
+    BatchSyncTaskStatusResponse:
+      type: object
+      required:
+        - task_id
+        - status
+        - queued_count
+        - processed_count
+        - success_count
+        - failed_count
+        - message
+        - failed_documents
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        queued_count:
+          type: integer
+          format: int32
+        processed_count:
+          type: integer
+          format: int32
+        success_count:
+          type: integer
+          format: int32
+        failed_count:
+          type: integer
+          format: int32
+        message:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_documents:
+          type: array
+          items:
+            type: string
+    QAGenerationRequest:
+      type: object
+      required:
+        - document_id
+      properties:
+        document_id:
+          type: string
+          minLength: 1
+        target_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+        mode:
+          $ref: "#/components/schemas/QAGenerationMode"
+    QAGenerationResponse:
+      type: object
+      required:
+        - task_id
+        - document_id
+        - status
+        - generated_qas
+        - message
+      properties:
+        task_id:
+          type: string
+        document_id:
+          type: string
+        status:
+          type: string
+        generated_qas:
+          type: integer
+          format: int32
+        message:
+          type: string
+    IngestionTaskStatusResponse:
+      type: object
+      required:
+        - id
+        - document_id
+        - task_type
+        - status
+        - stage
+        - total_fragments
+        - total_generated_qas
+        - retry_count
+        - started_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        task_type:
+          type: string
+          example: qa_generation
+        status:
+          type: string
+        stage:
+          type: string
+        created_by_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        total_fragments:
+          type: integer
+          format: int32
+        total_generated_qas:
+          type: integer
+          format: int32
+        retry_count:
+          type: integer
+          format: int32
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ApiError:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+      required:
+        - detail
+    ValidationError:
+      type: object
+      properties:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+      required:
+        - loc
+        - msg
+        - type
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"

@@ -1,9 +1,23 @@
-﻿import { isAxiosError } from 'axios';
+import { isAxiosError } from 'axios';
 import { API_CONFIG } from '@/config';
 import { http } from '@/services/http';
 import { mockDocumentApi } from '@/services/mock/document.mock';
 import type { PagedListResponse } from '@/types/api';
-import type { DocumentListQuery, DocumentStats, DocumentStatus, DocumentType, KnowledgeDocument, UploadDocumentResult } from '@/types/domain';
+import type {
+  BatchSyncStartPayload,
+  BatchSyncTaskStatus,
+  DocumentListQuery,
+  DocumentStats,
+  DocumentStatus,
+  DocumentType,
+  IngestionTaskStatus,
+  KnowledgeDocument,
+  QAGenerationPayload,
+  QAGenerationStartResult,
+  UploadDocumentPairPayload,
+  UploadDocumentResult,
+  UploadMode
+} from '@/types/domain';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -28,6 +42,20 @@ const expectOptionalString = (value: unknown, path: string): string | undefined 
 const expectNumber = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     throw new Error(`Contract mismatch: ${path} must be number`);
+  }
+  return value;
+};
+
+const expectOptionalNumber = (value: unknown, path: string): number | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return expectNumber(value, path);
+};
+
+const expectStringArray = (value: unknown, path: string): string[] => {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`Contract mismatch: ${path} must be string[]`);
   }
   return value;
 };
@@ -57,6 +85,17 @@ const expectOptionalDocumentType = (value: unknown, path: string): DocumentType 
     return docType;
   }
 
+  return undefined;
+};
+
+const expectOptionalUploadMode = (value: unknown, path: string): UploadMode | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const mode = expectString(value, path);
+  if (mode === 'sync' || mode === 'batch') {
+    return mode;
+  }
   return undefined;
 };
 
@@ -97,9 +136,9 @@ const parseStats = (raw: unknown): DocumentStats => {
     document_count: expectNumber(raw.document_count, 'stats.document_count'),
     fragment_count: expectNumber(raw.fragment_count, 'stats.fragment_count'),
     qa_count: expectNumber(raw.qa_count, 'stats.qa_count'),
-    indexed_count: raw.indexed_count === undefined ? undefined : expectNumber(raw.indexed_count, 'stats.indexed_count'),
-    processing_count: raw.processing_count === undefined ? undefined : expectNumber(raw.processing_count, 'stats.processing_count'),
-    failed_count: raw.failed_count === undefined ? undefined : expectNumber(raw.failed_count, 'stats.failed_count')
+    indexed_count: expectOptionalNumber(raw.indexed_count, 'stats.indexed_count'),
+    processing_count: expectOptionalNumber(raw.processing_count, 'stats.processing_count'),
+    failed_count: expectOptionalNumber(raw.failed_count, 'stats.failed_count')
   };
 };
 
@@ -139,10 +178,67 @@ const parseUploadResult = (raw: unknown): UploadDocumentResult => {
     file_md5: expectOptionalString(raw.file_md5, 'upload.file_md5'),
     object_key: expectOptionalString(raw.object_key, 'upload.object_key'),
     status: expectString(raw.status, 'upload.status'),
-    fragment_count: raw.fragment_count === undefined ? undefined : expectNumber(raw.fragment_count, 'upload.fragment_count'),
-    generated_pending_qas:
-      raw.generated_pending_qas === undefined ? undefined : expectNumber(raw.generated_pending_qas, 'upload.generated_pending_qas'),
-    ingestion_task_id: expectOptionalString(raw.ingestion_task_id, 'upload.ingestion_task_id')
+    fragment_count: expectOptionalNumber(raw.fragment_count, 'upload.fragment_count'),
+    generated_pending_qas: expectOptionalNumber(raw.generated_pending_qas, 'upload.generated_pending_qas'),
+    ingestion_task_id: expectOptionalString(raw.ingestion_task_id, 'upload.ingestion_task_id'),
+    sync_mode: expectOptionalUploadMode(raw.sync_mode, 'upload.sync_mode'),
+    sync_status: expectOptionalString(raw.sync_status, 'upload.sync_status')
+  };
+};
+
+const parseBatchSyncTask = (raw: unknown, path = 'batchSyncTask'): BatchSyncTaskStatus => {
+  if (!isObject(raw)) {
+    throw new Error(`Contract mismatch: ${path} must be object`);
+  }
+
+  return {
+    task_id: expectString(raw.task_id, `${path}.task_id`),
+    status: expectString(raw.status, `${path}.status`),
+    queued_count: expectNumber(raw.queued_count, `${path}.queued_count`),
+    processed_count: expectNumber(raw.processed_count, `${path}.processed_count`),
+    success_count: expectNumber(raw.success_count, `${path}.success_count`),
+    failed_count: expectNumber(raw.failed_count, `${path}.failed_count`),
+    message: expectString(raw.message, `${path}.message`),
+    started_at: expectOptionalString(raw.started_at, `${path}.started_at`),
+    finished_at: expectOptionalString(raw.finished_at, `${path}.finished_at`),
+    failed_documents: raw.failed_documents === undefined ? [] : expectStringArray(raw.failed_documents, `${path}.failed_documents`)
+  };
+};
+
+const parseQAGenerationResult = (raw: unknown): QAGenerationStartResult => {
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: qa generation start response must be object');
+  }
+
+  return {
+    task_id: expectString(raw.task_id, 'qaGeneration.task_id'),
+    document_id: expectString(raw.document_id, 'qaGeneration.document_id'),
+    status: expectString(raw.status, 'qaGeneration.status'),
+    generated_qas: expectNumber(raw.generated_qas, 'qaGeneration.generated_qas'),
+    message: expectString(raw.message, 'qaGeneration.message')
+  };
+};
+
+const parseIngestionTaskStatus = (raw: unknown): IngestionTaskStatus => {
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: ingestion task status response must be object');
+  }
+
+  return {
+    id: expectString(raw.id, 'ingestionTask.id'),
+    document_id: expectString(raw.document_id, 'ingestionTask.document_id'),
+    task_type: expectString(raw.task_type, 'ingestionTask.task_type'),
+    status: expectString(raw.status, 'ingestionTask.status'),
+    stage: expectString(raw.stage, 'ingestionTask.stage'),
+    created_by_user_id: expectOptionalNumber(raw.created_by_user_id, 'ingestionTask.created_by_user_id'),
+    total_fragments: expectNumber(raw.total_fragments, 'ingestionTask.total_fragments'),
+    total_generated_qas: expectNumber(raw.total_generated_qas, 'ingestionTask.total_generated_qas'),
+    retry_count: expectNumber(raw.retry_count, 'ingestionTask.retry_count'),
+    error_message: expectOptionalString(raw.error_message, 'ingestionTask.error_message'),
+    started_at: expectString(raw.started_at, 'ingestionTask.started_at'),
+    finished_at: expectOptionalString(raw.finished_at, 'ingestionTask.finished_at'),
+    created_at: expectString(raw.created_at, 'ingestionTask.created_at'),
+    updated_at: expectString(raw.updated_at, 'ingestionTask.updated_at')
   };
 };
 
@@ -216,30 +312,29 @@ export const documentApi = {
     return parseDocumentList(response.data, query.page ?? DEFAULT_PAGE, query.page_size ?? DEFAULT_PAGE_SIZE);
   },
 
-  async upload(
-    file: File,
-    options: {
-      knowledgeBase?: string;
-      title?: string;
-      documentType?: DocumentType;
-    } = {}
-  ): Promise<UploadDocumentResult> {
+  async uploadPair(payload: UploadDocumentPairPayload): Promise<UploadDocumentResult> {
     if (API_CONFIG.USE_MOCK) {
-      return mockDocumentApi.upload(file, options.knowledgeBase ?? 'default');
+      return mockDocumentApi.uploadPair(payload);
     }
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', payload.file);
+    formData.append('metadata_csv', payload.metadata_csv);
+    formData.append('upload_mode', payload.upload_mode ?? 'sync');
 
-    const knowledgeBase = options.knowledgeBase?.trim() || 'default';
+    const knowledgeBase = payload.knowledge_base?.trim() || 'default';
     formData.append('knowledge_base', knowledgeBase);
 
-    if (options.title?.trim()) {
-      formData.append('title', options.title.trim());
+    if (payload.title?.trim()) {
+      formData.append('title', payload.title.trim());
     }
 
-    if (options.documentType) {
-      formData.append('document_type', options.documentType);
+    if (payload.document_type) {
+      formData.append('document_type', payload.document_type);
+    }
+
+    if (payload.subdir.trim()) {
+      formData.append('subdir', payload.subdir.trim());
     }
 
     const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_UPLOAD, formData, {
@@ -249,6 +344,48 @@ export const documentApi = {
     });
 
     return parseUploadResult(response.data);
+  },
+
+  async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.startBatchSync(payload);
+    }
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_SYNC_START, payload);
+    return parseBatchSyncTask(response.data, 'batchSyncStart');
+  },
+
+  async getBatchSyncTask(taskId: string): Promise<BatchSyncTaskStatus> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.getBatchSyncTask(taskId);
+    }
+
+    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_SYNC_TASK(taskId));
+    return parseBatchSyncTask(response.data, 'batchSyncTask');
+  },
+
+  async startQaGeneration(payload: QAGenerationPayload): Promise<QAGenerationStartResult> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.startQaGeneration(payload);
+    }
+
+    const requestBody: QAGenerationPayload = {
+      document_id: payload.document_id,
+      target_count: payload.target_count,
+      mode: payload.mode
+    };
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_START, requestBody);
+    return parseQAGenerationResult(response.data);
+  },
+
+  async getQaGenerationTask(taskId: string): Promise<IngestionTaskStatus> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.getQaGenerationTask(taskId);
+    }
+
+    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_TASK(taskId));
+    return parseIngestionTaskStatus(response.data);
   },
 
   async getDownloadUrl(documentId: string): Promise<string> {
