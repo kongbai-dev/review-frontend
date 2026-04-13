@@ -6,6 +6,7 @@ export type DocumentSortField = 'uploaded_at' | 'file_name' | 'fragment_count' |
 export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' | 'data';
 export type UploadMode = 'sync' | 'batch';
 export type QAGenerationMode = 'append' | 'replace';
+export type DocumentPairStatus = 'pending_pair' | 'paired' | 'missing_csv' | 'invalid_csv' | 'ambiguous_pair';
 export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa' | 'processed_qa';
 export type SortOrder = 'asc' | 'desc';
 
@@ -104,6 +105,16 @@ export interface KnowledgeDocument {
   status: DocumentStatus;
   fragment_count: number;
   qa_count: number;
+  sync_mode?: UploadMode;
+  sync_status?: string;
+  local_file_path?: string;
+  local_csv_path?: string;
+  upload_session_id?: string;
+  pair_status?: DocumentPairStatus | string;
+  pair_error?: string;
+  csv_file_name?: string;
+  file_md5?: string;
+  object_key?: string;
   latest_task_status?: string;
 }
 
@@ -135,23 +146,57 @@ export interface UploadDocumentResult {
   sync_status?: string;
 }
 
-export interface UploadDocumentPairPayload {
+export interface UploadSyncDocumentPayload {
   file: File;
   metadata_csv: File;
-  upload_mode?: UploadMode;
   knowledge_base?: string;
   document_type?: DocumentType;
   title?: string;
-  subdir: string;
+  subdir?: string;
 }
 
-export type DocumentUploadQueueItemStatus = 'ready' | 'uploading' | 'success' | 'error' | 'conflict';
-
-export interface DocumentUploadQueueItem extends UploadDocumentPairPayload {
-  id: string;
-  status: DocumentUploadQueueItemStatus;
+export interface BatchUploadFileItem {
+  file_name: string;
+  status: string;
   message?: string;
-  response?: UploadDocumentResult;
+  document_id?: string;
+  csv_id?: string;
+}
+
+export interface BatchUploadResponse {
+  session_id: string;
+  knowledge_base: string;
+  total_files: number;
+  accepted_count: number;
+  rejected_count: number;
+  items: BatchUploadFileItem[];
+  paired_count: number;
+  unpaired_count: number;
+}
+
+export interface SessionUnmatchedDocumentItem {
+  document_id: string;
+  file_name: string;
+  pair_status: string;
+  pair_error?: string;
+}
+
+export interface SessionOrphanCsvItem {
+  file_name: string;
+  parse_status: string;
+  parse_error?: string;
+}
+
+export interface UploadSessionSummary {
+  session_id?: string;
+  status?: string;
+  knowledge_base: string;
+  doc_file_count: number;
+  csv_file_count: number;
+  paired_count: number;
+  unpaired_count: number;
+  unmatched_documents: SessionUnmatchedDocumentItem[];
+  orphan_csv_files: SessionOrphanCsvItem[];
 }
 
 export interface BatchSyncStartPayload {
@@ -160,19 +205,36 @@ export interface BatchSyncStartPayload {
   max_docs?: number;
   max_workers?: number;
   include_failed?: boolean;
+  knowledge_base?: string;
+  strict_pairing?: boolean;
+}
+
+export interface BatchSyncSkippedDocument {
+  document_id?: string;
+  file_name?: string;
+  reason?: string;
+  [key: string]: unknown;
 }
 
 export interface BatchSyncTaskStatus {
   task_id: string;
   status: string;
+  session_id?: string;
   queued_count: number;
   processed_count: number;
   success_count: number;
   failed_count: number;
+  skipped_count: number;
   message: string;
   started_at?: string;
   finished_at?: string;
   failed_documents: string[];
+  skipped_documents: BatchSyncSkippedDocument[];
+}
+
+export interface BatchUploadRequestPayload {
+  files: File[];
+  knowledge_base?: string;
 }
 
 export interface QAGenerationPayload {

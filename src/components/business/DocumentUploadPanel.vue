@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <section class="surface-card rounded-[1.6rem] p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h3 class="text-base font-semibold">上传文档（文档 + CSV）</h3>
-        <p class="text-muted mt-1 text-sm">每次添加一对同名文件（如 `paper.pdf` + `paper.csv`），支持加入队列后批量执行上传。</p>
+        <h3 class="text-base font-semibold">文档上传工作台</h3>
+        <p class="text-muted mt-1 text-sm">支持同步上传（单对 file+csv）和批量上传（文档/CSV 分离上传 + session 配对）。</p>
       </div>
       <button type="button" class="btn btn-ghost btn-sm" @click="emit('cancel')">收起</button>
     </div>
@@ -15,284 +15,311 @@
       当前角色仅可查看文档，无法执行上传。
     </p>
 
-    <form class="mt-4 space-y-4" @submit.prevent="handleAddToQueue">
-      <div class="grid gap-3 lg:grid-cols-2">
-        <label class="text-sm">
-          <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">上传模式</span>
-          <div class="grid grid-cols-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-0.5">
-            <button
-              type="button"
-              class="rounded-md px-2 py-1.5 text-sm font-medium transition-colors"
-              :class="form.upload_mode === 'sync' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-secondary)]'"
-              :disabled="documentStore.uploading || !canManage"
-              @click="form.upload_mode = 'sync'"
-            >
-              实时
-            </button>
-            <button
-              type="button"
-              class="rounded-md px-2 py-1.5 text-sm font-medium transition-colors"
-              :class="form.upload_mode === 'batch' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-secondary)]'"
-              :disabled="documentStore.uploading || !canManage"
-              @click="form.upload_mode = 'batch'"
-            >
-              批处理
-            </button>
-          </div>
-        </label>
-
-        <label class="text-sm">
-          <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">知识库</span>
-          <input
-            v-model="form.knowledge_base"
-            class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
-            :disabled="documentStore.uploading || !canManage"
-            placeholder="default"
-          />
-        </label>
-
-        <label class="text-sm lg:col-span-2">
-          <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">服务器子目录（subdir）</span>
-          <input
-            v-model="form.subdir"
-            class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
-            :disabled="documentStore.uploading || !canManage"
-            placeholder="papers/2026/iedm"
-          />
-          <span class="text-muted mt-1 block text-xs">最终路径会拼接到 `knowledge_data/{subdir}`。</span>
-        </label>
-
-        <label class="text-sm">
-          <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">文档类型（可选）</span>
-          <select
-            v-model="form.document_type"
-            class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
-            :disabled="documentStore.uploading || !canManage"
-          >
-            <option value="">自动</option>
-            <option value="paper">paper</option>
-            <option value="conference">conference</option>
-            <option value="book">book</option>
-            <option value="manual">manual</option>
-            <option value="code">code</option>
-            <option value="data">data</option>
-          </select>
-        </label>
-
-        <label class="text-sm">
-          <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">标题覆盖（可选）</span>
-          <input
-            v-model="form.title"
-            class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
-            :disabled="documentStore.uploading || !canManage"
-            placeholder="可留空，默认使用 CSV/文件名"
-          />
-        </label>
-      </div>
-
-      <div class="rounded-[1.2rem] border border-dashed border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_36%,transparent)] p-4">
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <label class="text-sm sm:col-span-2 lg:col-span-1">
+        <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">知识库</span>
         <input
-          ref="documentInputRef"
+          v-model="workspaceKnowledgeBase"
+          class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+          :disabled="documentStore.uploading || !canManage"
+          placeholder="default"
+        />
+      </label>
+
+      <label class="text-sm sm:col-span-2 lg:col-span-1">
+        <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">服务器子目录（sync 可选）</span>
+        <input
+          v-model="syncForm.subdir"
+          class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+          :disabled="documentStore.uploading || !canManage"
+          placeholder="papers/2026/iedm"
+        />
+      </label>
+
+      <label class="text-sm sm:col-span-2 lg:col-span-1">
+        <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">文档类型（sync 可选）</span>
+        <select
+          v-model="syncForm.document_type"
+          class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+          :disabled="documentStore.uploading || !canManage"
+        >
+          <option value="">自动</option>
+          <option value="paper">paper</option>
+          <option value="conference">conference</option>
+          <option value="book">book</option>
+          <option value="manual">manual</option>
+          <option value="code">code</option>
+          <option value="data">data</option>
+        </select>
+      </label>
+
+      <label class="text-sm sm:col-span-2 lg:col-span-1">
+        <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">标题覆盖（sync 可选）</span>
+        <input
+          v-model="syncForm.title"
+          class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none"
+          :disabled="documentStore.uploading || !canManage"
+          placeholder="可留空"
+        />
+      </label>
+    </div>
+
+    <div class="mt-4 grid gap-4 lg:grid-cols-2">
+      <section class="rounded-[1.2rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_32%,transparent)] p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="text-sm font-semibold">A. 实时同步上传（sync）</p>
+            <p class="text-muted mt-1 text-xs">上传单个文档与同名 CSV，立即入库。</p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            :disabled="documentStore.uploading || !canManage"
+            @click="handleSyncUpload"
+          >
+            {{ documentStore.uploading ? '执行中...' : '上传 sync' }}
+          </button>
+        </div>
+
+        <input
+          ref="syncDocumentInputRef"
           type="file"
           class="hidden"
-          accept=".pdf,.doc,.docx,.txt,.md,.csv,.zip,.py,.ipynb"
+          accept=".pdf,.doc,.docx,.txt,.md,.zip,.py,.ipynb"
           :disabled="documentStore.uploading || !canManage"
-          @change="handleDocumentChange"
+          @change="handleSyncDocumentChange"
         />
         <input
-          ref="metadataCsvInputRef"
+          ref="syncCsvInputRef"
           type="file"
           class="hidden"
           accept=".csv,text/csv"
           :disabled="documentStore.uploading || !canManage"
-          @change="handleMetadataCsvChange"
+          @change="handleSyncCsvChange"
         />
 
-        <div class="flex flex-wrap items-center gap-2">
-          <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openDocumentDialog">
-            选择文档
-          </button>
-          <span class="text-sm">{{ selectedDocument ? selectedDocument.name : '未选择文档' }}</span>
+        <div class="mt-3 space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openSyncDocumentDialog">
+              选择文档
+            </button>
+            <span class="text-sm">{{ syncDocument ? syncDocument.name : '未选择文档' }}</span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openSyncCsvDialog">
+              选择 CSV
+            </button>
+            <span class="text-sm">{{ syncCsv ? syncCsv.name : '未选择 CSV' }}</span>
+          </div>
         </div>
 
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openMetadataCsvDialog">
-            选择 CSV
-          </button>
-          <span class="text-sm">{{ selectedMetadataCsv ? selectedMetadataCsv.name : '未选择 CSV' }}</span>
+        <div v-if="documentStore.syncUploadResult" class="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-xs">
+          <p>
+            最近 sync 上传：{{ documentStore.syncUploadResult.file_name }}（{{ documentStore.syncUploadResult.document_id }}），状态：
+            {{ documentStore.syncUploadResult.sync_status || documentStore.syncUploadResult.status }}
+          </p>
         </div>
+      </section>
 
-        <div class="mt-4 flex flex-wrap items-center gap-2">
-          <button type="submit" class="btn btn-primary btn-sm" :disabled="documentStore.uploading || !canManage">加入队列</button>
-          <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="clearCurrentPair">
-            清空当前
-          </button>
-        </div>
-      </div>
-
-      <p v-if="displayError" class="text-sm text-[var(--color-danger)]">{{ displayError }}</p>
-    </form>
-
-    <div class="mt-5 rounded-xl border border-[var(--color-border)]">
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
-        <p class="text-sm font-medium">上传队列（{{ documentStore.uploadQueue.length }}）</p>
-        <div class="flex flex-wrap items-center gap-2">
+      <section class="rounded-[1.2rem] border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_32%,transparent)] p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="text-sm font-semibold">B/C. 批量上传 + Session 配对</p>
+            <p class="text-muted mt-1 text-xs">先上传文档，再上传 CSV，最后刷新查看当前 session。</p>
+          </div>
           <button
             type="button"
             class="btn btn-ghost btn-sm"
-            :disabled="documentStore.uploading || documentStore.uploadQueue.length === 0 || !canManage"
-            @click="documentStore.clearUploadQueue()"
+            :disabled="documentStore.uploading"
+            @click="refreshSessionSummary"
           >
-            清空队列
-          </button>
-          <button
-            type="button"
-            class="btn btn-success btn-sm"
-            :disabled="documentStore.uploading || documentStore.uploadQueue.length === 0 || !canManage"
-            @click="startUpload"
-          >
-            {{ documentStore.uploading ? '上传中...' : '开始上传' }}
+            刷新 Session
           </button>
         </div>
-      </div>
 
-      <div class="max-h-72 overflow-auto">
-        <table class="min-w-full border-separate border-spacing-y-1 text-sm">
-          <thead>
-            <tr class="text-left text-xs uppercase tracking-[0.08em] text-[color:color-mix(in_srgb,var(--color-text-secondary)_88%,transparent)]">
-              <th class="px-3 py-2 font-medium whitespace-nowrap">文档</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap">CSV</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap">模式</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap">子目录</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap">状态</th>
-              <th class="px-3 py-2 text-right font-medium whitespace-nowrap">操作</th>
-            </tr>
-          </thead>
-          <tbody v-if="documentStore.uploadQueue.length > 0">
-            <tr
-              v-for="item in documentStore.uploadQueue"
-              :key="item.id"
-              class="rounded-lg border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_35%,transparent)]"
-            >
-              <td class="px-3 py-2 align-top">
-                <p class="font-medium">{{ item.file.name }}</p>
-                <p class="text-muted mt-1 text-xs">{{ formatBytes(item.file.size) }}</p>
-              </td>
-              <td class="px-3 py-2 align-top">
-                <p>{{ item.metadata_csv.name }}</p>
-              </td>
-              <td class="px-3 py-2 align-top">{{ item.upload_mode }}</td>
-              <td class="px-3 py-2 align-top">{{ item.subdir }}</td>
-              <td class="px-3 py-2 align-top">
-                <span class="status-pill" :class="queueStatusTone(item.status)">
-                  {{ queueStatusLabel(item.status) }}
-                </span>
-                <p v-if="item.message" class="mt-1 max-w-[260px] text-xs text-[var(--color-text-secondary)]">{{ item.message }}</p>
-              </td>
-              <td class="px-3 py-2 text-right align-top">
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-sm"
-                  :disabled="documentStore.uploading || !canManage"
-                  @click="documentStore.removeUploadQueueItem(item.id)"
-                >
-                  移除
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <input
+          ref="batchDocsInputRef"
+          type="file"
+          class="hidden"
+          multiple
+          accept=".pdf,.doc,.docx,.txt,.md,.zip,.py,.ipynb"
+          :disabled="documentStore.uploading || !canManage"
+          @change="handleBatchDocsChange"
+        />
+        <input
+          ref="batchCsvInputRef"
+          type="file"
+          class="hidden"
+          multiple
+          accept=".csv,text/csv"
+          :disabled="documentStore.uploading || !canManage"
+          @change="handleBatchCsvChange"
+        />
 
-      <p v-if="documentStore.uploadQueue.length === 0" class="text-muted px-3 py-4 text-sm">
-        暂无待上传项。先添加“文档 + CSV”文件对。
-      </p>
+        <div class="mt-3 grid gap-2">
+          <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openBatchDocsDialog">
+                选择文档（可多选）
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="documentStore.uploading || !canManage" @click="handleBatchDocsUpload">
+                上传文档批次
+              </button>
+            </div>
+            <p class="text-muted mt-1 text-xs">{{ batchDocFiles.length > 0 ? `已选择 ${batchDocFiles.length} 个文档` : '未选择文档' }}</p>
+          </div>
+
+          <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="documentStore.uploading || !canManage" @click="openBatchCsvDialog">
+                选择 CSV（可多选）
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="documentStore.uploading || !canManage" @click="handleBatchCsvUpload">
+                上传 CSV 批次
+              </button>
+            </div>
+            <p class="text-muted mt-1 text-xs">{{ batchCsvFiles.length > 0 ? `已选择 ${batchCsvFiles.length} 个 CSV` : '未选择 CSV' }}</p>
+          </div>
+        </div>
+      </section>
     </div>
+
+    <div v-if="documentStore.batchUploadDocResult || documentStore.batchUploadCsvResult" class="mt-4 grid gap-3 lg:grid-cols-2">
+      <div v-if="documentStore.batchUploadDocResult" class="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
+        <p class="text-sm font-medium">文档批量上传结果</p>
+        <p class="mt-1 text-[var(--color-text-secondary)]">
+          session={{ documentStore.batchUploadDocResult.session_id }}，accepted={{ documentStore.batchUploadDocResult.accepted_count }}，rejected={{ documentStore.batchUploadDocResult.rejected_count }}
+        </p>
+        <ul class="mt-2 max-h-28 overflow-auto space-y-1">
+          <li v-for="item in documentStore.batchUploadDocResult.items" :key="`doc-${item.file_name}-${item.status}`">
+            {{ item.file_name }} · {{ item.status }}<span v-if="item.message"> · {{ item.message }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div v-if="documentStore.batchUploadCsvResult" class="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
+        <p class="text-sm font-medium">CSV 批量上传结果</p>
+        <p class="mt-1 text-[var(--color-text-secondary)]">
+          session={{ documentStore.batchUploadCsvResult.session_id }}，accepted={{ documentStore.batchUploadCsvResult.accepted_count }}，rejected={{ documentStore.batchUploadCsvResult.rejected_count }}
+        </p>
+        <ul class="mt-2 max-h-28 overflow-auto space-y-1">
+          <li v-for="item in documentStore.batchUploadCsvResult.items" :key="`csv-${item.file_name}-${item.status}`">
+            {{ item.file_name }} · {{ item.status }}<span v-if="item.message"> · {{ item.message }}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-sm">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="font-medium">当前 Session 配对状态</p>
+        <span class="text-xs text-[var(--color-text-secondary)]">knowledge_base={{ normalizedKnowledgeBase }}</span>
+      </div>
+
+      <template v-if="documentStore.currentSessionSummary">
+        <div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+          <div class="rounded-md border border-[var(--color-border)] px-2 py-1">文档数：{{ documentStore.currentSessionSummary.doc_file_count }}</div>
+          <div class="rounded-md border border-[var(--color-border)] px-2 py-1">CSV数：{{ documentStore.currentSessionSummary.csv_file_count }}</div>
+          <div class="rounded-md border border-[var(--color-border)] px-2 py-1">已配对：{{ documentStore.currentSessionSummary.paired_count }}</div>
+          <div class="rounded-md border border-[var(--color-border)] px-2 py-1">未配对：{{ documentStore.currentSessionSummary.unpaired_count }}</div>
+        </div>
+
+        <div class="mt-3 grid gap-3 lg:grid-cols-2">
+          <div class="rounded-md border border-[var(--color-border)] p-2 text-xs">
+            <p class="font-medium">未配对文档</p>
+            <ul v-if="documentStore.currentSessionSummary.unmatched_documents.length > 0" class="mt-1 max-h-28 overflow-auto space-y-1">
+              <li v-for="item in documentStore.currentSessionSummary.unmatched_documents" :key="item.document_id">
+                {{ item.file_name }} · {{ item.pair_status }}<span v-if="item.pair_error"> · {{ item.pair_error }}</span>
+              </li>
+            </ul>
+            <p v-else class="mt-1 text-[var(--color-text-secondary)]">无</p>
+          </div>
+
+          <div class="rounded-md border border-[var(--color-border)] p-2 text-xs">
+            <p class="font-medium">孤立/异常 CSV</p>
+            <ul v-if="documentStore.currentSessionSummary.orphan_csv_files.length > 0" class="mt-1 max-h-28 overflow-auto space-y-1">
+              <li v-for="item in documentStore.currentSessionSummary.orphan_csv_files" :key="`${item.file_name}-${item.parse_status}`">
+                {{ item.file_name }} · {{ item.parse_status }}<span v-if="item.parse_error"> · {{ item.parse_error }}</span>
+              </li>
+            </ul>
+            <p v-else class="mt-1 text-[var(--color-text-secondary)]">无</p>
+          </div>
+        </div>
+      </template>
+
+      <p v-else class="mt-2 text-xs text-[var(--color-text-secondary)]">暂无 session，请先上传批量文档或 CSV。</p>
+    </div>
+
+    <p v-if="displayError" class="mt-3 text-sm text-[var(--color-danger)]">{{ displayError }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useDocumentStore } from '@/stores/document.store';
-import type { DocumentType, UploadMode } from '@/types/domain';
+import type { DocumentType } from '@/types/domain';
 
 const props = withDefaults(
   defineProps<{
     canManage?: boolean;
     error?: string;
+    knowledgeBase?: string;
   }>(),
   {
     canManage: true,
-    error: ''
+    error: '',
+    knowledgeBase: 'default'
   }
 );
 
 const emit = defineEmits<{
   (e: 'cancel'): void;
-  (e: 'uploaded', summary: { successCount: number; conflictCount: number; failedCount: number }): void;
+  (e: 'update:knowledgeBase', value: string): void;
 }>();
 
 const documentStore = useDocumentStore();
 
-const documentInputRef = ref<HTMLInputElement | null>(null);
-const metadataCsvInputRef = ref<HTMLInputElement | null>(null);
-const selectedDocument = ref<File | null>(null);
-const selectedMetadataCsv = ref<File | null>(null);
+const syncDocumentInputRef = ref<HTMLInputElement | null>(null);
+const syncCsvInputRef = ref<HTMLInputElement | null>(null);
+const batchDocsInputRef = ref<HTMLInputElement | null>(null);
+const batchCsvInputRef = ref<HTMLInputElement | null>(null);
+
+const syncDocument = ref<File | null>(null);
+const syncCsv = ref<File | null>(null);
+const batchDocFiles = ref<File[]>([]);
+const batchCsvFiles = ref<File[]>([]);
+
 const localError = ref('');
 
-const form = reactive<{
-  upload_mode: UploadMode;
-  knowledge_base: string;
+const workspaceKnowledgeBase = ref(props.knowledgeBase || 'default');
+
+const syncForm = reactive<{
   subdir: string;
   document_type: DocumentType | '';
   title: string;
 }>({
-  upload_mode: 'sync',
-  knowledge_base: 'default',
   subdir: '',
   document_type: '',
   title: ''
 });
 
+const normalizedKnowledgeBase = computed(() => workspaceKnowledgeBase.value.trim() || 'default');
 const displayError = computed(() => localError.value || props.error);
 
-const openDocumentDialog = (): void => {
-  documentInputRef.value?.click();
-};
-
-const openMetadataCsvDialog = (): void => {
-  metadataCsvInputRef.value?.click();
-};
-
-const handleDocumentChange = (event: Event): void => {
-  const target = event.target as HTMLInputElement;
-  selectedDocument.value = target.files?.[0] ?? null;
-  localError.value = '';
-};
-
-const handleMetadataCsvChange = (event: Event): void => {
-  const target = event.target as HTMLInputElement;
-  selectedMetadataCsv.value = target.files?.[0] ?? null;
-  localError.value = '';
-};
-
-const clearCurrentPair = (): void => {
-  selectedDocument.value = null;
-  selectedMetadataCsv.value = null;
-  localError.value = '';
-  if (documentInputRef.value) {
-    documentInputRef.value.value = '';
+watch(
+  () => props.knowledgeBase,
+  (value) => {
+    workspaceKnowledgeBase.value = value || 'default';
   }
-  if (metadataCsvInputRef.value) {
-    metadataCsvInputRef.value.value = '';
-  }
-};
+);
 
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-};
+watch(
+  () => normalizedKnowledgeBase.value,
+  (value) => {
+    emit('update:knowledgeBase', value);
+  }
+);
 
 const extractBaseName = (name: string): string => {
   const dot = name.lastIndexOf('.');
@@ -300,79 +327,145 @@ const extractBaseName = (name: string): string => {
 };
 
 const isValidSubdir = (value: string): boolean => {
-  if (!value.trim()) return false;
+  if (!value.trim()) return true;
   if (value.startsWith('/')) return false;
   if (value.includes('..')) return false;
   if (value.includes('\\')) return false;
   return /^[A-Za-z0-9_/-]+$/.test(value);
 };
 
-const handleAddToQueue = (): void => {
+const openSyncDocumentDialog = (): void => {
+  syncDocumentInputRef.value?.click();
+};
+
+const openSyncCsvDialog = (): void => {
+  syncCsvInputRef.value?.click();
+};
+
+const openBatchDocsDialog = (): void => {
+  batchDocsInputRef.value?.click();
+};
+
+const openBatchCsvDialog = (): void => {
+  batchCsvInputRef.value?.click();
+};
+
+const handleSyncDocumentChange = (event: Event): void => {
+  const target = event.target as HTMLInputElement;
+  syncDocument.value = target.files?.[0] ?? null;
+  localError.value = '';
+};
+
+const handleSyncCsvChange = (event: Event): void => {
+  const target = event.target as HTMLInputElement;
+  syncCsv.value = target.files?.[0] ?? null;
+  localError.value = '';
+};
+
+const handleBatchDocsChange = (event: Event): void => {
+  const target = event.target as HTMLInputElement;
+  batchDocFiles.value = Array.from(target.files ?? []);
+  localError.value = '';
+};
+
+const handleBatchCsvChange = (event: Event): void => {
+  const target = event.target as HTMLInputElement;
+  batchCsvFiles.value = Array.from(target.files ?? []);
+  localError.value = '';
+};
+
+const handleSyncUpload = async (): Promise<void> => {
   localError.value = '';
 
-  if (!selectedDocument.value) {
+  if (!syncDocument.value) {
     localError.value = '请先选择文档文件';
     return;
   }
 
-  if (!selectedMetadataCsv.value) {
-    localError.value = '请先选择对应的 metadata CSV 文件';
+  if (!syncCsv.value) {
+    localError.value = '请先选择对应的 CSV 文件';
     return;
   }
 
-  if (!selectedMetadataCsv.value.name.toLowerCase().endsWith('.csv')) {
+  if (!syncCsv.value.name.toLowerCase().endsWith('.csv')) {
     localError.value = 'metadata_csv 必须是 CSV 文件';
     return;
   }
 
-  if (extractBaseName(selectedDocument.value.name) !== extractBaseName(selectedMetadataCsv.value.name)) {
-    localError.value = '文档与 CSV 主文件名必须一致（例如 a.pdf + a.csv）';
+  if (extractBaseName(syncDocument.value.name) !== extractBaseName(syncCsv.value.name)) {
+    localError.value = '文档与 CSV 必须同名（示例：a.pdf + a.csv）';
     return;
   }
 
-  if (!isValidSubdir(form.subdir)) {
-    localError.value = 'subdir 不合法，请仅使用字母/数字/_/-/，且不能包含 .. 或以 / 开头';
+  if (!isValidSubdir(syncForm.subdir)) {
+    localError.value = 'subdir 不合法，仅允许字母/数字/_/-/ 且不可包含 .. 或以 / 开头';
     return;
   }
 
-  documentStore.addUploadQueueItem({
-    file: selectedDocument.value,
-    metadata_csv: selectedMetadataCsv.value,
-    upload_mode: form.upload_mode,
-    knowledge_base: form.knowledge_base.trim() || 'default',
-    document_type: form.document_type || undefined,
-    title: form.title.trim() || undefined,
-    subdir: form.subdir.trim()
+  await documentStore.uploadSyncPair({
+    file: syncDocument.value,
+    metadata_csv: syncCsv.value,
+    knowledge_base: normalizedKnowledgeBase.value,
+    document_type: syncForm.document_type || undefined,
+    title: syncForm.title.trim() || undefined,
+    subdir: syncForm.subdir.trim() || undefined
   });
 
-  clearCurrentPair();
+  syncDocument.value = null;
+  syncCsv.value = null;
+  if (syncDocumentInputRef.value) syncDocumentInputRef.value.value = '';
+  if (syncCsvInputRef.value) syncCsvInputRef.value.value = '';
 };
 
-const startUpload = async (): Promise<void> => {
+const handleBatchDocsUpload = async (): Promise<void> => {
   localError.value = '';
 
-  if (documentStore.uploadQueue.length === 0) {
-    localError.value = '请先添加至少一个上传项';
+  if (batchDocFiles.value.length === 0) {
+    localError.value = '请先选择至少一个文档';
     return;
   }
 
-  const summary = await documentStore.uploadQueuedDocuments();
-  emit('uploaded', summary);
+  await documentStore.batchUploadDocs({
+    files: batchDocFiles.value,
+    knowledge_base: normalizedKnowledgeBase.value
+  });
+
+  batchDocFiles.value = [];
+  if (batchDocsInputRef.value) batchDocsInputRef.value.value = '';
 };
 
-const queueStatusLabel = (status: string): string => {
-  if (status === 'ready') return '待上传';
-  if (status === 'uploading') return '上传中';
-  if (status === 'success') return '成功';
-  if (status === 'conflict') return '重复';
-  return '失败';
+const handleBatchCsvUpload = async (): Promise<void> => {
+  localError.value = '';
+
+  if (batchCsvFiles.value.length === 0) {
+    localError.value = '请先选择至少一个 CSV';
+    return;
+  }
+
+  if (batchCsvFiles.value.some((file) => !file.name.toLowerCase().endsWith('.csv'))) {
+    localError.value = '批量 CSV 上传中包含非 csv 文件';
+    return;
+  }
+
+  await documentStore.batchUploadCsvs({
+    files: batchCsvFiles.value,
+    knowledge_base: normalizedKnowledgeBase.value
+  });
+
+  batchCsvFiles.value = [];
+  if (batchCsvInputRef.value) batchCsvInputRef.value.value = '';
 };
 
-const queueStatusTone = (status: string): string => {
-  if (status === 'success') return 'text-[var(--color-success)]';
-  if (status === 'uploading') return 'text-[var(--color-primary)]';
-  if (status === 'conflict') return 'text-[var(--color-warning)]';
-  if (status === 'ready') return 'text-[var(--color-text-secondary)]';
-  return 'text-[var(--color-danger)]';
+const refreshSessionSummary = async (): Promise<void> => {
+  localError.value = '';
+  await documentStore.refreshCurrentSessionSummary(normalizedKnowledgeBase.value);
 };
+
+onMounted(async () => {
+  try {
+    await documentStore.refreshCurrentSessionSummary(normalizedKnowledgeBase.value);
+  } catch {
+    // no-op: keep page usable when session is empty
+  }
+});
 </script>

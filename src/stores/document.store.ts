@@ -1,18 +1,20 @@
-import { isAxiosError } from 'axios';
-import { defineStore } from 'pinia';
+﻿import { defineStore } from 'pinia';
 import { documentApi } from '@/services/api/document.api';
 import { normalizeError } from '@/utils/error';
 import type {
   BatchSyncStartPayload,
   BatchSyncTaskStatus,
+  BatchUploadRequestPayload,
+  BatchUploadResponse,
   DocumentListQuery,
   DocumentStats,
-  DocumentUploadQueueItem,
   IngestionTaskStatus,
   KnowledgeDocument,
   QAGenerationPayload,
   QAGenerationStartResult,
-  UploadDocumentPairPayload
+  UploadDocumentResult,
+  UploadSessionSummary,
+  UploadSyncDocumentPayload
 } from '@/types/domain';
 
 const defaultStats = (): DocumentStats => ({
@@ -34,12 +36,6 @@ const defaultQuery = (): DocumentListQuery => ({
   order: 'desc'
 });
 
-interface UploadQueueSummary {
-  successCount: number;
-  conflictCount: number;
-  failedCount: number;
-}
-
 interface PollingOptions {
   intervalMs?: number;
   maxPolls?: number;
@@ -54,7 +50,10 @@ interface DocumentState {
   uploading: boolean;
   downloadingId: string;
   selectedDocumentIds: string[];
-  uploadQueue: DocumentUploadQueueItem[];
+  syncUploadResult: UploadDocumentResult | null;
+  batchUploadDocResult: BatchUploadResponse | null;
+  batchUploadCsvResult: BatchUploadResponse | null;
+  currentSessionSummary: UploadSessionSummary | null;
   batchSyncTask: BatchSyncTaskStatus | null;
   batchSyncPolling: boolean;
   qaGenerationStartResult: QAGenerationStartResult | null;
@@ -78,46 +77,8 @@ const wait = async (ms: number): Promise<void> =>
     window.setTimeout(resolve, ms);
   });
 
-const extractHttpStatus = (error: unknown): number | undefined => {
-  if (isAxiosError(error)) {
-    return error.response?.status;
-  }
-
-  if (typeof error !== 'object' || error === null) {
-    return undefined;
-  }
-
-  const maybe = error as {
-    status?: unknown;
-    response?: {
-      status?: unknown;
-    };
-  };
-
-  if (typeof maybe.response?.status === 'number') {
-    return maybe.response.status;
-  }
-
-  if (typeof maybe.status === 'number') {
-    return maybe.status;
-  }
-
-  return undefined;
-};
-
 const terminalBatchStatus = new Set(['skipped', 'completed', 'failed']);
 const terminalTaskStatus = new Set(['completed', 'failed', 'canceled', 'cancelled']);
-
-const getUploadSuccessMessage = (item: DocumentUploadQueueItem): string => {
-  const syncMode = item.response?.sync_mode;
-  const syncStatus = item.response?.sync_status;
-
-  if (syncMode === 'batch' || syncStatus === 'sync_pending') {
-    return '已上传并加入批处理队列';
-  }
-
-  return '上传并同步完成';
-};
 
 export const useDocumentStore = defineStore('documents', {
   state: (): DocumentState => ({
@@ -129,7 +90,10 @@ export const useDocumentStore = defineStore('documents', {
     uploading: false,
     downloadingId: '',
     selectedDocumentIds: [],
-    uploadQueue: [],
+    syncUploadResult: null,
+    batchUploadDocResult: null,
+    batchUploadCsvResult: null,
+    currentSessionSummary: null,
     batchSyncTask: null,
     batchSyncPolling: false,
     qaGenerationStartResult: null,
@@ -169,31 +133,10 @@ export const useDocumentStore = defineStore('documents', {
       this.selectedDocumentIds = [];
     },
 
-    addUploadQueueItem(payload: UploadDocumentPairPayload): void {
-      const queueItem: DocumentUploadQueueItem = {
-        ...payload,
-        id: `uq_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-        status: 'ready',
-        message: ''
-      };
-
-      this.uploadQueue = [...this.uploadQueue, queueItem];
-    },
-
-    removeUploadQueueItem(id: string): void {
-      this.uploadQueue = this.uploadQueue.filter((item) => item.id !== id);
-    },
-
-    clearUploadQueue(): void {
-      this.uploadQueue = [];
-    },
-
-    resetUploadQueueForRetry(): void {
-      this.uploadQueue = this.uploadQueue.map((item) => ({
-        ...item,
-        status: item.status === 'success' ? 'success' : 'ready',
-        message: item.status === 'success' ? item.message : ''
-      }));
+    clearUploadState(): void {
+      this.syncUploadResult = null;
+      this.batchUploadDocResult = null;
+      this.batchUploadCsvResult = null;
     },
 
     async fetchStats(): Promise<void> {
@@ -249,74 +192,144 @@ export const useDocumentStore = defineStore('documents', {
       }
     },
 
-    async uploadQueuedDocuments(): Promise<UploadQueueSummary> {
-      const summary: UploadQueueSummary = {
-        successCount: 0,
-        conflictCount: 0,
-        failedCount: 0
-      };
-
-      if (this.uploadQueue.length === 0) {
-        return summary;
-      }
-
+    async uploadSyncPair(payload: UploadSyncDocumentPayload): Promise<UploadDocumentResult> {
       this.uploading = true;
       this.error = '';
 
       try {
-        for (const item of this.uploadQueue) {
-          if (item.status === 'success') {
-            continue;
-          }
+        const result = await documentApi.uploadSyncDocument(payload);
+        this.syncUploadResult = result;
 
-          item.status = 'uploading';
-          item.message = '上传中...';
+        const refreshQuery: DocumentListQuery = {
+          ...this.query,
+          page: 1
+        };
 
-          try {
-            const response = await documentApi.uploadPair(item);
-            item.response = response;
-            item.status = 'success';
-            item.message = getUploadSuccessMessage(item);
-            summary.successCount += 1;
-          } catch (error) {
-            const status = extractHttpStatus(error);
-            item.message = normalizeError(error);
+        const [stats, list] = await Promise.all([
+          documentApi.getStats(),
+          documentApi.getList(refreshQuery)
+        ]);
 
-            if (status === 409) {
-              item.status = 'conflict';
-              summary.conflictCount += 1;
-            } else {
-              item.status = 'error';
-              summary.failedCount += 1;
-            }
-          }
+        this.stats = stats;
+        this.items = list.items;
+        this.total = list.total;
+        this.query = {
+          ...refreshQuery,
+          page: list.page,
+          page_size: list.page_size
+        };
+        this.syncSelectionWithList();
+
+        try {
+          this.currentSessionSummary = await documentApi.getCurrentBatchSession(payload.knowledge_base?.trim() || 'default');
+        } catch {
+          // Session may be absent when only sync upload is used.
         }
 
-        if (summary.successCount > 0) {
-          const refreshQuery: DocumentListQuery = {
-            ...this.query,
-            page: 1
-          };
-          const [stats, list] = await Promise.all([
-            documentApi.getStats(),
-            documentApi.getList(refreshQuery)
-          ]);
-
-          this.stats = stats;
-          this.items = list.items;
-          this.total = list.total;
-          this.query = {
-            ...refreshQuery,
-            page: list.page,
-            page_size: list.page_size
-          };
-          this.syncSelectionWithList();
-        }
+        return result;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
       } finally {
         this.uploading = false;
       }
+    },
 
-      return summary;
+    async batchUploadDocs(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+      this.uploading = true;
+      this.error = '';
+
+      try {
+        const knowledgeBase = payload.knowledge_base?.trim() || 'default';
+        const result = await documentApi.batchUploadDocFiles({
+          files: payload.files,
+          knowledge_base: knowledgeBase
+        });
+        this.batchUploadDocResult = result;
+        this.currentSessionSummary = await documentApi.getCurrentBatchSession(knowledgeBase);
+
+        const refreshQuery: DocumentListQuery = {
+          ...this.query,
+          page: 1
+        };
+
+        const [stats, list] = await Promise.all([
+          documentApi.getStats(),
+          documentApi.getList(refreshQuery)
+        ]);
+
+        this.stats = stats;
+        this.items = list.items;
+        this.total = list.total;
+        this.query = {
+          ...refreshQuery,
+          page: list.page,
+          page_size: list.page_size
+        };
+        this.syncSelectionWithList();
+
+        return result;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      } finally {
+        this.uploading = false;
+      }
+    },
+
+    async batchUploadCsvs(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+      this.uploading = true;
+      this.error = '';
+
+      try {
+        const knowledgeBase = payload.knowledge_base?.trim() || 'default';
+        const result = await documentApi.batchUploadCsvFiles({
+          files: payload.files,
+          knowledge_base: knowledgeBase
+        });
+        this.batchUploadCsvResult = result;
+        this.currentSessionSummary = await documentApi.getCurrentBatchSession(knowledgeBase);
+
+        const refreshQuery: DocumentListQuery = {
+          ...this.query,
+          page: 1
+        };
+
+        const [stats, list] = await Promise.all([
+          documentApi.getStats(),
+          documentApi.getList(refreshQuery)
+        ]);
+
+        this.stats = stats;
+        this.items = list.items;
+        this.total = list.total;
+        this.query = {
+          ...refreshQuery,
+          page: list.page,
+          page_size: list.page_size
+        };
+        this.syncSelectionWithList();
+
+        return result;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      } finally {
+        this.uploading = false;
+      }
+    },
+
+    async refreshCurrentSessionSummary(knowledgeBase = 'default'): Promise<UploadSessionSummary> {
+      this.error = '';
+
+      try {
+        const summary = await documentApi.getCurrentBatchSession(knowledgeBase.trim() || 'default');
+        this.currentSessionSummary = summary;
+        return summary;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      }
     },
 
     async triggerBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {

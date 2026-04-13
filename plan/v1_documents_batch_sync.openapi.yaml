@@ -1,590 +1,2084 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
-  title: AI TCAD Backend API - Documents Batch Sync
-  version: "2026-04-12"
-  description: >
-    Contract for document upload decoupling, batch MinIO sync, and manual QA generation.
-    Source of truth is testagent/backend_api/routers/v1_documents.py.
-servers:
-  - url: /
-tags:
-  - name: v1-documents-batch
-    description: Upload + batch sync + manual QA generation endpoints.
-security:
-  - bearerAuth: []
+  title: AI TCAD Review Backend - Documents API
+  version: '2026-04-13'
+  description: OpenAPI contract for review workbench document APIs (sync upload +
+    batch upload/sync + QA generation).
 paths:
+  /api/v1/knowledge/documents/stats:
+    get:
+      tags:
+      - v1-documents
+      summary: Document Stats
+      operationId: document_stats_api_v1_knowledge_documents_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentStatsResponse'
+      security:
+      - HTTPBearer: []
   /api/v1/knowledge/documents:
+    get:
+      tags:
+      - v1-documents
+      summary: List Documents
+      operationId: list_documents_api_v1_knowledge_documents_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: file_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Type
+      - name: document_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+      - name: type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Type
+      - name: keyword
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Keyword
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          type: string
+          default: uploaded_at
+          title: Sort By
+      - name: order
+        in: query
+        required: false
+        schema:
+          type: string
+          default: desc
+          title: Order
+      - name: knowledge_base
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Knowledge Base
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     post:
       tags:
-        - v1-documents-batch
-      summary: Upload a document with metadata CSV
-      operationId: uploadKnowledgeDocument
-      description: |
-        Uploads a document and same-basename metadata CSV.
-
-        Business rules enforced by backend:
-        1. `file` and `metadata_csv` must share same basename (e.g. `a.pdf` + `a.csv`).
-        2. `metadata_csv` must be UTF-8 and include first-row fields `title`, `year`, `type`.
-        3. `upload_mode=sync` uploads MinIO immediately; `upload_mode=batch` queues for batch sync.
-        4. Upload does not auto-generate QA pairs.
-      x-required-roles:
-        - admin
-        - reviewer
+      - v1-documents
+      summary: Upload Document
+      operationId: upload_document_api_v1_knowledge_documents_post
+      security:
+      - HTTPBearer: []
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              $ref: "#/components/schemas/DocumentUploadRequest"
+              $ref: '#/components/schemas/Body_upload_document_api_v1_knowledge_documents_post'
       responses:
-        "201":
-          description: Created
+        '201':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DocumentUploadResponse"
-              examples:
-                syncMode:
-                  summary: sync mode response
-                  value:
-                    document_id: "6f58d8f7-2435-49de-983d-6ca31a7f3e88"
-                    title: "TCAD Handbook"
-                    file_name: "tcad_handbook.pdf"
-                    document_type: "manual"
-                    knowledge_base: "default"
-                    status: "synced"
-                    fragment_count: 0
-                    generated_pending_qas: 0
-                    ingestion_task_id: "b4f8985a-151e-431d-a444-630b94380710"
-                    sync_mode: "sync"
-                    sync_status: "synced"
-                batchMode:
-                  summary: batch mode response
-                  value:
-                    document_id: "ab9c8a72-6c98-4a35-abd9-6d99613c43fb"
-                    title: "IEDM 2025 Notes"
-                    file_name: "iedm_2025_notes.pdf"
-                    document_type: "conference"
-                    knowledge_base: "default"
-                    status: "sync_pending"
-                    fragment_count: 0
-                    generated_pending_qas: 0
-                    ingestion_task_id: "5ce2de6e-9a55-4f88-ae6b-e3ef3fb8a73f"
-                    sync_mode: "batch"
-                    sync_status: "sync_pending"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "409":
-          $ref: "#/components/responses/ConflictError"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntityError"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
+                $ref: '#/components/schemas/DocumentUploadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/knowledge/documents/{document_id}:
+    get:
+      tags:
+      - v1-documents
+      summary: Get Document
+      operationId: get_document_api_v1_knowledge_documents__document_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - v1-documents
+      summary: Delete Document
+      operationId: delete_document_api_v1_knowledge_documents__document_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentDeleteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/knowledge/documents/{document_id}/download:
+    get:
+      tags:
+      - v1-documents
+      summary: Download Document
+      operationId: download_document_api_v1_knowledge_documents__document_id__download_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/knowledge/documents/batch-upload/doc-files:
+    post:
+      tags:
+      - v1-documents
+      summary: Batch Upload Doc Files
+      operationId: batch_upload_doc_files_api_v1_knowledge_documents_batch_upload_doc_files_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_batch_upload_doc_files_api_v1_knowledge_documents_batch_upload_doc_files_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchUploadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/knowledge/documents/batch-upload/csv-files:
+    post:
+      tags:
+      - v1-documents
+      summary: Batch Upload Csv Files
+      operationId: batch_upload_csv_files_api_v1_knowledge_documents_batch_upload_csv_files_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_batch_upload_csv_files_api_v1_knowledge_documents_batch_upload_csv_files_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchUploadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/knowledge/documents/batch-upload/session/current:
+    get:
+      tags:
+      - v1-documents
+      summary: Get Current Batch Upload Session
+      operationId: get_current_batch_upload_session_api_v1_knowledge_documents_batch_upload_session_current_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: knowledge_base
+        in: query
+        required: false
+        schema:
+          type: string
+          default: default
+          title: Knowledge Base
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSessionSummaryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/knowledge/documents/batch-sync/start:
     post:
       tags:
-        - v1-documents-batch
-      summary: Start a batch sync task
-      operationId: startBatchSync
-      description: |
-        Starts asynchronous synchronization from local files to MinIO.
-        Candidate documents are selected by backend from `sync_pending` and optionally `sync_failed`.
-      x-required-roles:
-        - admin
-        - reviewer
+      - v1-documents
+      summary: Start Batch Sync
+      operationId: start_batch_sync_api_v1_knowledge_documents_batch_sync_start_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BatchSyncStartRequest"
+              $ref: '#/components/schemas/BatchSyncStartRequest'
+        required: true
       responses:
-        "200":
-          description: Task queued
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BatchSyncStartResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntityError"
+                $ref: '#/components/schemas/BatchSyncStartResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/knowledge/documents/batch-sync/tasks/{task_id}:
     get:
       tags:
-        - v1-documents-batch
-      summary: Query batch sync task status
-      operationId: getBatchSyncTask
-      x-required-roles:
-        - admin
-        - reviewer
-        - observer
+      - v1-documents
+      summary: Get Batch Sync Task
+      operationId: get_batch_sync_task_api_v1_knowledge_documents_batch_sync_tasks__task_id__get
+      security:
+      - HTTPBearer: []
       parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Batch sync task ID.
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
       responses:
-        "200":
-          description: Task status
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BatchSyncTaskStatusResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
+                $ref: '#/components/schemas/BatchSyncTaskStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/knowledge/documents/qa-generation/start:
     post:
       tags:
-        - v1-documents-batch
-      summary: Generate QA pairs manually for one document
-      operationId: startQAGeneration
-      x-required-roles:
-        - admin
-        - reviewer
+      - v1-documents
+      summary: Generate Document Qas
+      operationId: generate_document_qas_api_v1_knowledge_documents_qa_generation_start_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QAGenerationRequest"
+              $ref: '#/components/schemas/QAGenerationRequest'
+        required: true
       responses:
-        "200":
-          description: QA generation completed in current implementation
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QAGenerationResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntityError"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-        "502":
-          $ref: "#/components/responses/BadGatewayError"
+                $ref: '#/components/schemas/QAGenerationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /api/v1/knowledge/documents/qa-generation/tasks/{task_id}:
     get:
       tags:
-        - v1-documents-batch
-      summary: Query manual QA generation task status
-      operationId: getQAGenerationTask
-      x-required-roles:
-        - admin
-        - reviewer
-        - observer
+      - v1-documents
+      summary: Get Qa Generation Task
+      operationId: get_qa_generation_task_api_v1_knowledge_documents_qa_generation_tasks__task_id__get
+      security:
+      - HTTPBearer: []
       parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Ingestion task ID for task_type=qa_generation.
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Id
       responses:
-        "200":
-          description: QA generation task status
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IngestionTaskStatusResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
+                type: object
+                additionalProperties: true
+                title: Response Get Qa Generation Task Api V1 Knowledge Documents
+                  Qa Generation Tasks  Task Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-  responses:
-    UnauthorizedError:
-      description: Authentication required or token invalid.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: authentication required
-    ForbiddenError:
-      description: Authenticated but permission denied.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: permission denied
-    NotFoundError:
-      description: Resource not found.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: document not found
-    ConflictError:
-      description: Conflict with existing data.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: document already exists
-    UnprocessableEntityError:
-      description: Parameter validation or business rule validation failed.
-      content:
-        application/json:
-          schema:
-            oneOf:
-              - $ref: "#/components/schemas/ApiError"
-              - $ref: "#/components/schemas/HTTPValidationError"
-    InternalServerError:
-      description: Internal server error.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: document upload failed
-    BadGatewayError:
-      description: Upstream dependency failed (for example MinIO).
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ApiError"
-          example:
-            detail: failed to fetch document from MinIO
   schemas:
-    DocumentType:
-      type: string
-      enum:
-        - paper
-        - conference
-        - book
-        - manual
-        - code
-        - data
-    UploadMode:
-      type: string
-      enum:
-        - sync
-        - batch
-      default: sync
-    QAGenerationMode:
-      type: string
-      enum:
-        - append
-        - replace
-      default: append
-    DocumentUploadRequest:
+    AssignmentRequest:
+      properties:
+        qa_ids:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Qa Ids
+        assignee:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Assignee
       type: object
       required:
-        - file
-        - metadata_csv
+      - qa_ids
+      - assignee
+      title: AssignmentRequest
+    AssignmentResponse:
       properties:
-        file:
+        updated_count:
+          type: integer
+          title: Updated Count
+        assignee:
           type: string
-          format: binary
-          description: Document file. Must be non-empty.
-        metadata_csv:
-          type: string
-          format: binary
-          description: Metadata CSV. Must be UTF-8 and share basename with `file`.
-        title:
-          type: string
-          description: Optional title override. Defaults to CSV title/file title.
-        document_type:
-          $ref: "#/components/schemas/DocumentType"
-        type:
-          $ref: "#/components/schemas/DocumentType"
-        upload_mode:
-          $ref: "#/components/schemas/UploadMode"
-        knowledge_base:
-          type: string
-          default: default
-        subdir:
-          type: string
-          nullable: true
-      description: >
-        `document_type` and `type` are compatibility fields. Backend precedence:
-        document_type > type > metadata_csv.type > "manual".
-    DocumentUploadResponse:
+          title: Assignee
+        assignee_user_id:
+          type: integer
+          title: Assignee User Id
       type: object
       required:
-        - document_id
-        - title
-        - file_name
-        - document_type
-        - knowledge_base
-        - status
-        - fragment_count
-        - generated_pending_qas
-        - ingestion_task_id
-      properties:
-        document_id:
-          type: string
-        title:
-          type: string
-        file_name:
-          type: string
-        document_type:
-          type: string
-        knowledge_base:
-          type: string
-        status:
-          type: string
-        fragment_count:
-          type: integer
-          format: int32
-        generated_pending_qas:
-          type: integer
-          format: int32
-        ingestion_task_id:
-          type: string
-        sync_mode:
-          type: string
-          nullable: true
-        sync_status:
-          type: string
-          nullable: true
+      - updated_count
+      - assignee
+      - assignee_user_id
+      title: AssignmentResponse
     BatchSyncStartRequest:
-      type: object
       properties:
         min_batch_size:
           type: integer
-          minimum: 1
-          maximum: 1000
+          maximum: 1000.0
+          minimum: 1.0
+          title: Min Batch Size
           default: 10
         max_wait_seconds:
           type: integer
-          minimum: 0
-          maximum: 86400
+          maximum: 86400.0
+          minimum: 0.0
+          title: Max Wait Seconds
           default: 300
         max_docs:
           type: integer
-          minimum: 1
-          maximum: 2000
+          maximum: 2000.0
+          minimum: 1.0
+          title: Max Docs
           default: 200
         max_workers:
           type: integer
-          minimum: 1
-          maximum: 64
+          maximum: 64.0
+          minimum: 1.0
+          title: Max Workers
           default: 8
         include_failed:
           type: boolean
+          title: Include Failed
           default: true
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+        strict_pairing:
+          type: boolean
+          title: Strict Pairing
+          default: false
+      type: object
+      title: BatchSyncStartRequest
     BatchSyncStartResponse:
-      type: object
-      required:
-        - task_id
-        - status
-        - queued_count
-        - processed_count
-        - success_count
-        - failed_count
-        - message
       properties:
         task_id:
           type: string
+          title: Task Id
         status:
           type: string
+          title: Status
+        session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Session Id
         queued_count:
           type: integer
-          format: int32
+          title: Queued Count
         processed_count:
           type: integer
-          format: int32
+          title: Processed Count
         success_count:
           type: integer
-          format: int32
+          title: Success Count
         failed_count:
           type: integer
-          format: int32
+          title: Failed Count
+        skipped_count:
+          type: integer
+          title: Skipped Count
+          default: 0
         message:
           type: string
+          title: Message
+      type: object
+      required:
+      - task_id
+      - status
+      - queued_count
+      - processed_count
+      - success_count
+      - failed_count
+      - message
+      title: BatchSyncStartResponse
     BatchSyncTaskStatusResponse:
-      type: object
-      required:
-        - task_id
-        - status
-        - queued_count
-        - processed_count
-        - success_count
-        - failed_count
-        - message
-        - failed_documents
       properties:
         task_id:
           type: string
+          title: Task Id
         status:
           type: string
+          title: Status
+        session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Session Id
         queued_count:
           type: integer
-          format: int32
+          title: Queued Count
         processed_count:
           type: integer
-          format: int32
+          title: Processed Count
         success_count:
           type: integer
-          format: int32
+          title: Success Count
         failed_count:
           type: integer
-          format: int32
+          title: Failed Count
+        skipped_count:
+          type: integer
+          title: Skipped Count
+          default: 0
         message:
           type: string
+          title: Message
+          default: ''
         started_at:
-          type: string
-          format: date-time
-          nullable: true
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
         finished_at:
-          type: string
-          format: date-time
-          nullable: true
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
         failed_documents:
-          type: array
           items:
             type: string
-    QAGenerationRequest:
+          type: array
+          title: Failed Documents
+        skipped_documents:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Skipped Documents
       type: object
       required:
-        - document_id
+      - task_id
+      - status
+      - queued_count
+      - processed_count
+      - success_count
+      - failed_count
+      title: BatchSyncTaskStatusResponse
+    BatchUploadFileItem:
+      properties:
+        file_name:
+          type: string
+          title: File Name
+        status:
+          type: string
+          title: Status
+        message:
+          type: string
+          title: Message
+          default: ''
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        csv_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Csv Id
+      type: object
+      required:
+      - file_name
+      - status
+      title: BatchUploadFileItem
+    BatchUploadResponse:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+        total_files:
+          type: integer
+          title: Total Files
+        accepted_count:
+          type: integer
+          title: Accepted Count
+        rejected_count:
+          type: integer
+          title: Rejected Count
+        items:
+          items:
+            $ref: '#/components/schemas/BatchUploadFileItem'
+          type: array
+          title: Items
+        paired_count:
+          type: integer
+          title: Paired Count
+          default: 0
+        unpaired_count:
+          type: integer
+          title: Unpaired Count
+          default: 0
+      type: object
+      required:
+      - session_id
+      - knowledge_base
+      - total_files
+      - accepted_count
+      - rejected_count
+      title: BatchUploadResponse
+    Body_batch_upload_csv_files_api_v1_knowledge_documents_batch_upload_csv_files_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+      type: object
+      required:
+      - files
+      title: Body_batch_upload_csv_files_api_v1_knowledge_documents_batch_upload_csv_files_post
+    Body_batch_upload_doc_files_api_v1_knowledge_documents_batch_upload_doc_files_post:
+      properties:
+        files:
+          items:
+            type: string
+            contentMediaType: application/octet-stream
+          type: array
+          title: Files
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+      type: object
+      required:
+      - files
+      title: Body_batch_upload_doc_files_api_v1_knowledge_documents_batch_upload_doc_files_post
+    Body_upload_document_api_v1_knowledge_documents_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        metadata_csv:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Metadata Csv
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+        type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Type
+        upload_mode:
+          type: string
+          title: Upload Mode
+          default: sync
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+        subdir:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Subdir
+      type: object
+      required:
+      - file
+      - metadata_csv
+      title: Body_upload_document_api_v1_knowledge_documents_post
+    DocumentDeleteResponse:
+      properties:
+        deleted:
+          type: boolean
+          title: Deleted
+        id:
+          type: string
+          title: Id
+      type: object
+      required:
+      - deleted
+      - id
+      title: DocumentDeleteResponse
+    DocumentDetailResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        file_name:
+          type: string
+          title: File Name
+        source_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Path
+        file_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Type
+        file_size:
+          type: integer
+          title: File Size
+          default: 0
+        uploaded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Uploaded At
+        uploaded_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uploaded By
+        uploaded_by_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uploaded By Name
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+        status:
+          type: string
+          title: Status
+          default: indexed
+        fragment_count:
+          type: integer
+          title: Fragment Count
+          default: 0
+        qa_count:
+          type: integer
+          title: Qa Count
+          default: 0
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+        authors:
+          items:
+            type: string
+          type: array
+          title: Authors
+        year:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Year
+        journal:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Journal
+        conference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Conference
+        publisher:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Publisher
+        volume:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Volume
+        issue:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Issue
+        pages:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pages
+        doi:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Doi
+        abstract:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Abstract
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        scenes:
+          items:
+            type: string
+          type: array
+          title: Scenes
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        sync_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Mode
+        sync_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Status
+        local_file_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Local File Path
+        local_csv_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Local Csv Path
+        upload_session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Upload Session Id
+        pair_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pair Status
+        pair_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pair Error
+        csv_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Csv File Name
+        file_md5:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Md5
+        object_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Object Key
+        indexed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Indexed At
+        last_error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error Code
+        last_error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error Message
+        uploaded_by_user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Uploaded By User Id
+        latest_task_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Latest Task Id
+        latest_task_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Latest Task Status
+        latest_task_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Latest Task Stage
+        latest_task_error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Latest Task Error Message
+        latest_task_updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Latest Task Updated At
+        sync_attempts:
+          type: integer
+          title: Sync Attempts
+          default: 0
+        sync_last_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Last Error
+        minio_uploaded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Minio Uploaded At
+        qa_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Qa Status
+        csv_md5:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Csv Md5
+      type: object
+      required:
+      - document_id
+      - title
+      - file_name
+      title: DocumentDetailResponse
+    DocumentListItem:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        file_name:
+          type: string
+          title: File Name
+        source_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Path
+        file_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Type
+        file_size:
+          type: integer
+          title: File Size
+          default: 0
+        uploaded_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Uploaded At
+        uploaded_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uploaded By
+        uploaded_by_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Uploaded By Name
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+          default: default
+        status:
+          type: string
+          title: Status
+          default: indexed
+        fragment_count:
+          type: integer
+          title: Fragment Count
+          default: 0
+        qa_count:
+          type: integer
+          title: Qa Count
+          default: 0
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+        authors:
+          items:
+            type: string
+          type: array
+          title: Authors
+        year:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Year
+        journal:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Journal
+        conference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Conference
+        publisher:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Publisher
+        volume:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Volume
+        issue:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Issue
+        pages:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pages
+        doi:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Doi
+        abstract:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Abstract
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        scenes:
+          items:
+            type: string
+          type: array
+          title: Scenes
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+        sync_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Mode
+        sync_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Status
+        local_file_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Local File Path
+        local_csv_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Local Csv Path
+        upload_session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Upload Session Id
+        pair_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pair Status
+        pair_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pair Error
+        csv_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Csv File Name
+      type: object
+      required:
+      - document_id
+      - title
+      - file_name
+      title: DocumentListItem
+    DocumentListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DocumentListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: DocumentListResponse
+    DocumentStatsResponse:
+      properties:
+        document_count:
+          type: integer
+          title: Document Count
+        fragment_count:
+          type: integer
+          title: Fragment Count
+        qa_count:
+          type: integer
+          title: Qa Count
+        indexed_count:
+          type: integer
+          title: Indexed Count
+        processing_count:
+          type: integer
+          title: Processing Count
+        failed_count:
+          type: integer
+          title: Failed Count
+      type: object
+      required:
+      - document_count
+      - fragment_count
+      - qa_count
+      - indexed_count
+      - processing_count
+      - failed_count
+      title: DocumentStatsResponse
+    DocumentUploadResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        file_name:
+          type: string
+          title: File Name
+        document_type:
+          type: string
+          title: Document Type
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+        status:
+          type: string
+          title: Status
+        fragment_count:
+          type: integer
+          title: Fragment Count
+        generated_pending_qas:
+          type: integer
+          title: Generated Pending Qas
+        ingestion_task_id:
+          type: string
+          title: Ingestion Task Id
+        sync_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Mode
+        sync_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sync Status
+      type: object
+      required:
+      - document_id
+      - title
+      - file_name
+      - document_type
+      - knowledge_base
+      - status
+      - fragment_count
+      - generated_pending_qas
+      - ingestion_task_id
+      title: DocumentUploadResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    MemberRankingItem:
+      properties:
+        rank:
+          type: integer
+          title: Rank
+        user_id:
+          type: integer
+          title: User Id
+        username:
+          type: string
+          title: Username
+        display_name:
+          type: string
+          title: Display Name
+        uploaded_document_count:
+          type: integer
+          title: Uploaded Document Count
+        reviewed_qa_count:
+          type: integer
+          title: Reviewed Qa Count
+        deprecated_qa_count:
+          type: integer
+          title: Deprecated Qa Count
+        processed_qa_count:
+          type: integer
+          title: Processed Qa Count
+        last_active_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Active At
+      type: object
+      required:
+      - rank
+      - user_id
+      - username
+      - display_name
+      - uploaded_document_count
+      - reviewed_qa_count
+      - deprecated_qa_count
+      - processed_qa_count
+      title: MemberRankingItem
+    MemberRankingResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MemberRankingItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: MemberRankingResponse
+    QAGenerationRequest:
       properties:
         document_id:
           type: string
           minLength: 1
+          title: Document Id
         target_count:
           type: integer
-          minimum: 1
-          maximum: 100
+          maximum: 100.0
+          minimum: 1.0
+          title: Target Count
           default: 10
         mode:
-          $ref: "#/components/schemas/QAGenerationMode"
-    QAGenerationResponse:
+          type: string
+          enum:
+          - append
+          - replace
+          title: Mode
+          default: append
       type: object
       required:
-        - task_id
-        - document_id
-        - status
-        - generated_qas
-        - message
+      - document_id
+      title: QAGenerationRequest
+    QAGenerationResponse:
       properties:
         task_id:
           type: string
+          title: Task Id
         document_id:
           type: string
+          title: Document Id
         status:
           type: string
+          title: Status
         generated_qas:
           type: integer
-          format: int32
+          title: Generated Qas
         message:
           type: string
-    IngestionTaskStatusResponse:
+          title: Message
       type: object
       required:
-        - id
-        - document_id
-        - task_type
-        - status
-        - stage
-        - total_fragments
-        - total_generated_qas
-        - retry_count
-        - started_at
-        - created_at
-        - updated_at
+      - task_id
+      - document_id
+      - status
+      - generated_qas
+      - message
+      title: QAGenerationResponse
+    QAPairDetailResponse:
       properties:
         id:
           type: string
-        document_id:
+          title: Id
+        question:
           type: string
-        task_type:
+          title: Question
+        answer:
           type: string
-          example: qa_generation
+          title: Answer
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        scenes:
+          items:
+            type: string
+          type: array
+          title: Scenes
+        confidence:
+          type: number
+          title: Confidence
         status:
           type: string
-        stage:
+          title: Status
+        reviewer:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reviewer
+        reviewer_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reviewer Name
+        assignee:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee
+        assignee_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee Name
+        reviewed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reviewed At
+        review_notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Notes
+        version:
+          type: integer
+          title: Version
+        source_mode:
           type: string
+          title: Source Mode
+          default: llm_generated
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document File Name
+        assignee_user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Assignee User Id
+        reviewer_user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reviewer User Id
         created_by_user_id:
-          type: integer
-          format: int64
-          nullable: true
-        total_fragments:
-          type: integer
-          format: int32
-        total_generated_qas:
-          type: integer
-          format: int32
-        retry_count:
-          type: integer
-          format: int32
-        error_message:
-          type: string
-          nullable: true
-        started_at:
-          type: string
-          format: date-time
-        finished_at:
-          type: string
-          format: date-time
-          nullable: true
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    ApiError:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Created By User Id
+        fragments:
+          items:
+            $ref: '#/components/schemas/QAPairFragmentItem'
+          type: array
+          title: Fragments
       type: object
-      properties:
-        detail:
-          oneOf:
-            - type: string
-            - type: object
-              additionalProperties: true
-            - type: array
-              items:
-                type: object
-                additionalProperties: true
       required:
-        - detail
-    ValidationError:
+      - id
+      - question
+      - answer
+      - confidence
+      - status
+      - version
+      title: QAPairDetailResponse
+    QAPairFragmentItem:
+      properties:
+        id:
+          type: string
+          title: Id
+        fragment_type:
+          type: string
+          title: Fragment Type
+        content:
+          type: string
+          title: Content
+        page_start:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page Start
+        page_end:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Page End
+        meta:
+          additionalProperties: true
+          type: object
+          title: Meta
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
       type: object
+      required:
+      - id
+      - fragment_type
+      - content
+      title: QAPairFragmentItem
+    QAPairListItem:
+      properties:
+        id:
+          type: string
+          title: Id
+        question:
+          type: string
+          title: Question
+        answer:
+          type: string
+          title: Answer
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        scenes:
+          items:
+            type: string
+          type: array
+          title: Scenes
+        confidence:
+          type: number
+          title: Confidence
+        status:
+          type: string
+          title: Status
+        reviewer:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reviewer
+        reviewer_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reviewer Name
+        assignee:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee
+        assignee_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee Name
+        reviewed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Reviewed At
+        review_notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Review Notes
+        version:
+          type: integer
+          title: Version
+        source_mode:
+          type: string
+          title: Source Mode
+          default: llm_generated
+        document_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Id
+        document_file_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document File Name
+        assignee_user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Assignee User Id
+        reviewer_user_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reviewer User Id
+      type: object
+      required:
+      - id
+      - question
+      - answer
+      - confidence
+      - status
+      - version
+      title: QAPairListItem
+    QAPairListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/QAPairListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: QAPairListResponse
+    QAPairStatsResponse:
+      properties:
+        pending:
+          type: integer
+          title: Pending
+        reviewed:
+          type: integer
+          title: Reviewed
+        deprecated:
+          type: integer
+          title: Deprecated
+      type: object
+      required:
+      - pending
+      - reviewed
+      - deprecated
+      title: QAPairStatsResponse
+    QAPairUpdateRequest:
+      properties:
+        question:
+          type: string
+          minLength: 1
+          title: Question
+        answer:
+          type: string
+          minLength: 1
+          title: Answer
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        scenes:
+          items:
+            type: string
+          type: array
+          title: Scenes
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.5
+          title: Confidence
+        review_notes:
+          type: string
+          title: Review Notes
+          default: ''
+        status:
+          type: string
+          enum:
+          - pending
+          - reviewed
+          - deprecated
+          title: Status
+          default: reviewed
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        assignee:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee
+      type: object
+      required:
+      - question
+      - answer
+      - confidence
+      - version
+      title: QAPairUpdateRequest
+    ReviewLogCreateRequest:
+      properties:
+        qa_pair_id:
+          type: integer
+          minimum: 1.0
+          title: Qa Pair Id
+        change_detail:
+          additionalProperties: true
+          type: object
+          title: Change Detail
+      type: object
+      required:
+      - qa_pair_id
+      - change_detail
+      title: ReviewLogCreateRequest
+    ReviewLogCreateResponse:
+      properties:
+        id:
+          type: integer
+          title: Id
+      type: object
+      required:
+      - id
+      title: ReviewLogCreateResponse
+    ReviewLogItem:
+      properties:
+        id:
+          type: integer
+          title: Id
+        qa_pair_id:
+          type: integer
+          title: Qa Pair Id
+        reviewer_id:
+          type: integer
+          title: Reviewer Id
+        reviewer_username:
+          type: string
+          title: Reviewer Username
+        change_detail:
+          additionalProperties: true
+          type: object
+          title: Change Detail
+        reviewed_at:
+          type: string
+          format: date-time
+          title: Reviewed At
+      type: object
+      required:
+      - id
+      - qa_pair_id
+      - reviewer_id
+      - reviewer_username
+      - change_detail
+      - reviewed_at
+      title: ReviewLogItem
+    SearchRequest:
+      properties:
+        query:
+          type: string
+          title: Query
+        scenes:
+          items:
+            type: string
+            enum:
+            - engineer
+            - researcher
+            - student
+            - support
+          type: array
+          title: Scenes
+        topics:
+          items:
+            type: string
+          type: array
+          title: Topics
+        min_confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.5
+          title: Min Confidence
+          default: 0.5
+        source_types:
+          items:
+            type: string
+            enum:
+            - paper
+            - conference
+            - book
+            - manual
+            - code
+            - data
+          type: array
+          title: Source Types
+        include_fragments:
+          type: boolean
+          title: Include Fragments
+          default: true
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 5
+      type: object
+      required:
+      - query
+      title: SearchRequest
+    SearchResultItem:
+      properties:
+        question:
+          type: string
+          title: Question
+        answer:
+          type: string
+          title: Answer
+        confidence:
+          type: number
+          title: Confidence
+        source:
+          type: string
+          title: Source
+        fragment_ids:
+          items:
+            type: string
+          type: array
+          title: Fragment Ids
+        source_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Type
+        doc_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Doc Id
+        source_detail:
+          additionalProperties: true
+          type: object
+          title: Source Detail
+      type: object
+      required:
+      - question
+      - answer
+      - confidence
+      - source
+      title: SearchResultItem
+    SessionOrphanCsvItem:
+      properties:
+        file_name:
+          type: string
+          title: File Name
+        parse_status:
+          type: string
+          title: Parse Status
+        parse_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parse Error
+      type: object
+      required:
+      - file_name
+      - parse_status
+      title: SessionOrphanCsvItem
+    SessionUnmatchedDocumentItem:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        file_name:
+          type: string
+          title: File Name
+        pair_status:
+          type: string
+          title: Pair Status
+        pair_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pair Error
+      type: object
+      required:
+      - document_id
+      - file_name
+      - pair_status
+      title: SessionUnmatchedDocumentItem
+    UploadSessionSummaryResponse:
+      properties:
+        session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Session Id
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+        knowledge_base:
+          type: string
+          title: Knowledge Base
+        doc_file_count:
+          type: integer
+          title: Doc File Count
+          default: 0
+        csv_file_count:
+          type: integer
+          title: Csv File Count
+          default: 0
+        paired_count:
+          type: integer
+          title: Paired Count
+          default: 0
+        unpaired_count:
+          type: integer
+          title: Unpaired Count
+          default: 0
+        unmatched_documents:
+          items:
+            $ref: '#/components/schemas/SessionUnmatchedDocumentItem'
+          type: array
+          title: Unmatched Documents
+        orphan_csv_files:
+          items:
+            $ref: '#/components/schemas/SessionOrphanCsvItem'
+          type: array
+          title: Orphan Csv Files
+      type: object
+      required:
+      - knowledge_base
+      title: UploadSessionSummaryResponse
+    V1LoginRequest:
+      properties:
+        username:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Username
+        password:
+          type: string
+          maxLength: 256
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - username
+      - password
+      title: V1LoginRequest
+    V1LoginResponse:
+      properties:
+        token:
+          type: string
+          title: Token
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+        expires_in:
+          type: integer
+          title: Expires In
+        user:
+          $ref: '#/components/schemas/V1UserInfo'
+      type: object
+      required:
+      - token
+      - expires_in
+      - user
+      title: V1LoginResponse
+    V1UserInfo:
+      properties:
+        id:
+          type: integer
+          title: Id
+        username:
+          type: string
+          title: Username
+        name:
+          type: string
+          title: Name
+        role:
+          type: string
+          title: Role
+        status:
+          type: string
+          title: Status
+        created_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created At
+        last_active_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Active At
+      type: object
+      required:
+      - id
+      - username
+      - name
+      - role
+      - status
+      title: V1UserInfo
+    ValidationError:
       properties:
         loc:
-          type: array
           items:
-            oneOf:
-              - type: string
-              - type: integer
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
         msg:
           type: string
+          title: Message
         type:
           type: string
-      required:
-        - loc
-        - msg
-        - type
-    HTTPValidationError:
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
       type: object
-      properties:
-        detail:
-          type: array
-          items:
-            $ref: "#/components/schemas/ValidationError"
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+tags:
+- name: v1-documents
+  description: Review workbench document endpoints.

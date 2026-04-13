@@ -4,8 +4,11 @@ import { http } from '@/services/http';
 import { mockDocumentApi } from '@/services/mock/document.mock';
 import type { PagedListResponse } from '@/types/api';
 import type {
+  BatchSyncSkippedDocument,
   BatchSyncStartPayload,
   BatchSyncTaskStatus,
+  BatchUploadRequestPayload,
+  BatchUploadResponse,
   DocumentListQuery,
   DocumentStats,
   DocumentStatus,
@@ -14,7 +17,8 @@ import type {
   KnowledgeDocument,
   QAGenerationPayload,
   QAGenerationStartResult,
-  UploadDocumentPairPayload,
+  UploadSessionSummary,
+  UploadSyncDocumentPayload,
   UploadDocumentResult,
   UploadMode
 } from '@/types/domain';
@@ -99,6 +103,28 @@ const expectOptionalUploadMode = (value: unknown, path: string): UploadMode | un
   return undefined;
 };
 
+const parseSkippedDocuments = (value: unknown, path: string): BatchSyncSkippedDocument[] => {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`Contract mismatch: ${path} must be array`);
+  }
+
+  return value.map((item, index) => {
+    if (!isObject(item)) {
+      throw new Error(`Contract mismatch: ${path}[${index}] must be object`);
+    }
+    return {
+      document_id: expectOptionalString(item.document_id, `${path}[${index}].document_id`),
+      file_name: expectOptionalString(item.file_name, `${path}[${index}].file_name`),
+      reason: expectOptionalString(item.reason, `${path}[${index}].reason`),
+      ...item
+    };
+  });
+};
+
 const parseDocument = (raw: unknown, path = 'document'): KnowledgeDocument => {
   if (!isObject(raw)) {
     throw new Error(`Contract mismatch: ${path} must be object`);
@@ -113,16 +139,26 @@ const parseDocument = (raw: unknown, path = 'document'): KnowledgeDocument => {
     document_id: id,
     title: expectOptionalString(raw.title, `${path}.title`),
     file_name: expectString(raw.file_name, `${path}.file_name`),
-    file_type: expectString(raw.file_type, `${path}.file_type`),
-    file_size: expectNumber(raw.file_size, `${path}.file_size`),
-    uploaded_at: expectString(raw.uploaded_at, `${path}.uploaded_at`),
-    uploaded_by: expectString(raw.uploaded_by, `${path}.uploaded_by`),
+    file_type: expectOptionalString(raw.file_type, `${path}.file_type`) ?? 'unknown',
+    file_size: expectOptionalNumber(raw.file_size, `${path}.file_size`) ?? 0,
+    uploaded_at: expectOptionalString(raw.uploaded_at, `${path}.uploaded_at`) ?? '',
+    uploaded_by: expectOptionalString(raw.uploaded_by, `${path}.uploaded_by`) ?? '',
     uploaded_by_name: expectOptionalString(raw.uploaded_by_name, `${path}.uploaded_by_name`),
     document_type: expectOptionalDocumentType(raw.document_type ?? raw.type, `${path}.document_type`),
     knowledge_base: expectOptionalString(raw.knowledge_base, `${path}.knowledge_base`),
     status: expectDocumentStatus(raw.status, `${path}.status`),
-    fragment_count: expectNumber(raw.fragment_count, `${path}.fragment_count`),
-    qa_count: expectNumber(raw.qa_count, `${path}.qa_count`),
+    fragment_count: expectOptionalNumber(raw.fragment_count, `${path}.fragment_count`) ?? 0,
+    qa_count: expectOptionalNumber(raw.qa_count, `${path}.qa_count`) ?? 0,
+    sync_mode: expectOptionalUploadMode(raw.sync_mode, `${path}.sync_mode`),
+    sync_status: expectOptionalString(raw.sync_status, `${path}.sync_status`),
+    local_file_path: expectOptionalString(raw.local_file_path, `${path}.local_file_path`),
+    local_csv_path: expectOptionalString(raw.local_csv_path, `${path}.local_csv_path`),
+    upload_session_id: expectOptionalString(raw.upload_session_id, `${path}.upload_session_id`),
+    pair_status: expectOptionalString(raw.pair_status, `${path}.pair_status`),
+    pair_error: expectOptionalString(raw.pair_error, `${path}.pair_error`),
+    csv_file_name: expectOptionalString(raw.csv_file_name, `${path}.csv_file_name`),
+    file_md5: expectOptionalString(raw.file_md5, `${path}.file_md5`),
+    object_key: expectOptionalString(raw.object_key, `${path}.object_key`),
     latest_task_status: expectOptionalString(raw.latest_task_status, `${path}.latest_task_status`)
   };
 };
@@ -186,6 +222,84 @@ const parseUploadResult = (raw: unknown): UploadDocumentResult => {
   };
 };
 
+const parseBatchUploadResponse = (raw: unknown, path = 'batchUpload'): BatchUploadResponse => {
+  if (!isObject(raw)) {
+    throw new Error(`Contract mismatch: ${path} response must be object`);
+  }
+
+  const itemsRaw = raw.items;
+  if (!Array.isArray(itemsRaw)) {
+    throw new Error(`Contract mismatch: ${path}.items must be array`);
+  }
+
+  return {
+    session_id: expectString(raw.session_id, `${path}.session_id`),
+    knowledge_base: expectString(raw.knowledge_base, `${path}.knowledge_base`),
+    total_files: expectNumber(raw.total_files, `${path}.total_files`),
+    accepted_count: expectNumber(raw.accepted_count, `${path}.accepted_count`),
+    rejected_count: expectNumber(raw.rejected_count, `${path}.rejected_count`),
+    paired_count: expectOptionalNumber(raw.paired_count, `${path}.paired_count`) ?? 0,
+    unpaired_count: expectOptionalNumber(raw.unpaired_count, `${path}.unpaired_count`) ?? 0,
+    items: itemsRaw.map((item, index) => {
+      if (!isObject(item)) {
+        throw new Error(`Contract mismatch: ${path}.items[${index}] must be object`);
+      }
+
+      return {
+        file_name: expectString(item.file_name, `${path}.items[${index}].file_name`),
+        status: expectString(item.status, `${path}.items[${index}].status`),
+        message: expectOptionalString(item.message, `${path}.items[${index}].message`),
+        document_id: expectOptionalString(item.document_id, `${path}.items[${index}].document_id`),
+        csv_id: expectOptionalString(item.csv_id, `${path}.items[${index}].csv_id`)
+      };
+    })
+  };
+};
+
+const parseUploadSessionSummary = (raw: unknown): UploadSessionSummary => {
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: upload session summary response must be object');
+  }
+
+  const unmatchedRaw = raw.unmatched_documents;
+  const orphanRaw = raw.orphan_csv_files;
+
+  if (!Array.isArray(unmatchedRaw) || !Array.isArray(orphanRaw)) {
+    throw new Error('Contract mismatch: unmatched_documents/orphan_csv_files must be array');
+  }
+
+  return {
+    session_id: expectOptionalString(raw.session_id, 'session.session_id'),
+    status: expectOptionalString(raw.status, 'session.status'),
+    knowledge_base: expectString(raw.knowledge_base, 'session.knowledge_base'),
+    doc_file_count: expectOptionalNumber(raw.doc_file_count, 'session.doc_file_count') ?? 0,
+    csv_file_count: expectOptionalNumber(raw.csv_file_count, 'session.csv_file_count') ?? 0,
+    paired_count: expectOptionalNumber(raw.paired_count, 'session.paired_count') ?? 0,
+    unpaired_count: expectOptionalNumber(raw.unpaired_count, 'session.unpaired_count') ?? 0,
+    unmatched_documents: unmatchedRaw.map((item, index) => {
+      if (!isObject(item)) {
+        throw new Error(`Contract mismatch: unmatched_documents[${index}] must be object`);
+      }
+      return {
+        document_id: expectString(item.document_id, `session.unmatched_documents[${index}].document_id`),
+        file_name: expectString(item.file_name, `session.unmatched_documents[${index}].file_name`),
+        pair_status: expectString(item.pair_status, `session.unmatched_documents[${index}].pair_status`),
+        pair_error: expectOptionalString(item.pair_error, `session.unmatched_documents[${index}].pair_error`)
+      };
+    }),
+    orphan_csv_files: orphanRaw.map((item, index) => {
+      if (!isObject(item)) {
+        throw new Error(`Contract mismatch: orphan_csv_files[${index}] must be object`);
+      }
+      return {
+        file_name: expectString(item.file_name, `session.orphan_csv_files[${index}].file_name`),
+        parse_status: expectString(item.parse_status, `session.orphan_csv_files[${index}].parse_status`),
+        parse_error: expectOptionalString(item.parse_error, `session.orphan_csv_files[${index}].parse_error`)
+      };
+    })
+  };
+};
+
 const parseBatchSyncTask = (raw: unknown, path = 'batchSyncTask'): BatchSyncTaskStatus => {
   if (!isObject(raw)) {
     throw new Error(`Contract mismatch: ${path} must be object`);
@@ -194,14 +308,17 @@ const parseBatchSyncTask = (raw: unknown, path = 'batchSyncTask'): BatchSyncTask
   return {
     task_id: expectString(raw.task_id, `${path}.task_id`),
     status: expectString(raw.status, `${path}.status`),
+    session_id: expectOptionalString(raw.session_id, `${path}.session_id`),
     queued_count: expectNumber(raw.queued_count, `${path}.queued_count`),
     processed_count: expectNumber(raw.processed_count, `${path}.processed_count`),
     success_count: expectNumber(raw.success_count, `${path}.success_count`),
     failed_count: expectNumber(raw.failed_count, `${path}.failed_count`),
-    message: expectString(raw.message, `${path}.message`),
+    skipped_count: expectOptionalNumber(raw.skipped_count, `${path}.skipped_count`) ?? 0,
+    message: expectOptionalString(raw.message, `${path}.message`) ?? '',
     started_at: expectOptionalString(raw.started_at, `${path}.started_at`),
     finished_at: expectOptionalString(raw.finished_at, `${path}.finished_at`),
-    failed_documents: raw.failed_documents === undefined ? [] : expectStringArray(raw.failed_documents, `${path}.failed_documents`)
+    failed_documents: raw.failed_documents === undefined ? [] : expectStringArray(raw.failed_documents, `${path}.failed_documents`),
+    skipped_documents: parseSkippedDocuments(raw.skipped_documents, `${path}.skipped_documents`)
   };
 };
 
@@ -312,18 +429,16 @@ export const documentApi = {
     return parseDocumentList(response.data, query.page ?? DEFAULT_PAGE, query.page_size ?? DEFAULT_PAGE_SIZE);
   },
 
-  async uploadPair(payload: UploadDocumentPairPayload): Promise<UploadDocumentResult> {
+  async uploadSyncDocument(payload: UploadSyncDocumentPayload): Promise<UploadDocumentResult> {
     if (API_CONFIG.USE_MOCK) {
-      return mockDocumentApi.uploadPair(payload);
+      return mockDocumentApi.uploadSyncDocument(payload);
     }
 
     const formData = new FormData();
     formData.append('file', payload.file);
     formData.append('metadata_csv', payload.metadata_csv);
-    formData.append('upload_mode', payload.upload_mode ?? 'sync');
-
-    const knowledgeBase = payload.knowledge_base?.trim() || 'default';
-    formData.append('knowledge_base', knowledgeBase);
+    formData.append('upload_mode', 'sync');
+    formData.append('knowledge_base', payload.knowledge_base?.trim() || 'default');
 
     if (payload.title?.trim()) {
       formData.append('title', payload.title.trim());
@@ -333,7 +448,7 @@ export const documentApi = {
       formData.append('document_type', payload.document_type);
     }
 
-    if (payload.subdir.trim()) {
+    if (payload.subdir?.trim()) {
       formData.append('subdir', payload.subdir.trim());
     }
 
@@ -344,6 +459,60 @@ export const documentApi = {
     });
 
     return parseUploadResult(response.data);
+  },
+
+  async batchUploadDocFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.batchUploadDocFiles(payload);
+    }
+
+    const formData = new FormData();
+    payload.files.forEach((file) => {
+      formData.append('files', file);
+    });
+    formData.append('knowledge_base', payload.knowledge_base?.trim() || 'default');
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_UPLOAD_DOC_FILES, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+
+    return parseBatchUploadResponse(response.data, 'batchUploadDocs');
+  },
+
+  async batchUploadCsvFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.batchUploadCsvFiles(payload);
+    }
+
+    const formData = new FormData();
+    payload.files.forEach((file) => {
+      formData.append('files', file);
+    });
+    formData.append('knowledge_base', payload.knowledge_base?.trim() || 'default');
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_UPLOAD_CSV_FILES, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+
+    return parseBatchUploadResponse(response.data, 'batchUploadCsv');
+  },
+
+  async getCurrentBatchSession(knowledgeBase = 'default'): Promise<UploadSessionSummary> {
+    if (API_CONFIG.USE_MOCK) {
+      return mockDocumentApi.getCurrentBatchSession(knowledgeBase);
+    }
+
+    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_UPLOAD_SESSION_CURRENT, {
+      params: {
+        knowledge_base: knowledgeBase
+      }
+    });
+
+    return parseUploadSessionSummary(response.data);
   },
 
   async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
@@ -419,13 +588,6 @@ export const documentApi = {
       return;
     }
 
-    try {
-      await http.delete(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
-    } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 501) {
-        throw new Error('Backend has not implemented document delete endpoint yet (501).');
-      }
-      throw error;
-    }
+    await http.delete(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
   }
 };

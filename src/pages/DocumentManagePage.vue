@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="flex h-[calc(100vh-7.5rem)] min-h-[640px] flex-col gap-3">
     <p
       v-if="documentStore.error"
@@ -37,7 +37,7 @@
                 class="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-primary)_4%,white)]"
                 @click="toggleUploadPanel"
               >
-                {{ showUploadPanel ? '收起上传' : '上传文档' }}
+                {{ showUploadPanel ? '收起上传' : '上传工作台' }}
               </button>
               <button
                 type="button"
@@ -63,58 +63,114 @@
               class="mt-3 rounded-xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg)_88%,transparent)] p-3"
             >
               <DocumentUploadPanel
+                v-model:knowledge-base="batchForm.knowledge_base"
                 :can-manage="canManage"
                 :error="documentStore.error"
                 @cancel="closeUploadPanel"
-                @uploaded="handleUploaded"
               />
             </div>
           </transition>
 
-          <p
-            v-if="uploadSummary"
-            class="mt-3 rounded-lg border border-[color:color-mix(in_srgb,var(--color-success)_24%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-success)_8%,transparent)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
-          >
-            上传完成：成功 {{ uploadSummary.successCount }}，重复 {{ uploadSummary.conflictCount }}，失败 {{ uploadSummary.failedCount }}。
-          </p>
-
           <div class="mt-3 rounded-xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg)_92%,transparent)] p-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="text-sm font-medium">批处理同步控制台</p>
-              <button
-                v-if="canManage"
-                type="button"
-                class="btn btn-primary btn-sm"
-                :disabled="batchSubmitting || documentStore.batchSyncPolling"
-                @click="handleStartBatchSync"
-              >
-                {{ batchSubmitting || documentStore.batchSyncPolling ? '执行中...' : '启动批处理同步' }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  :disabled="batchSubmitting || documentStore.batchSyncPolling"
+                  @click="refreshBatchSession"
+                >
+                  刷新 Session
+                </button>
+                <button
+                  v-if="canManage"
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  :disabled="batchSubmitting || documentStore.batchSyncPolling"
+                  @click="handleStartBatchSync"
+                >
+                  {{ batchSubmitting || documentStore.batchSyncPolling ? '执行中...' : '启动批处理同步' }}
+                </button>
+              </div>
             </div>
 
             <p v-if="!canManage" class="text-muted mt-1 text-xs">当前角色无法触发批处理，但可查看任务状态。</p>
 
-            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <label class="text-sm">
+                <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">知识库</span>
+                <input
+                  v-model="batchForm.knowledge_base"
+                  class="form-control h-9 px-2 text-sm"
+                  :disabled="batchSubmitting || documentStore.batchSyncPolling"
+                />
+              </label>
+
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">最小批量 N</span>
-                <input v-model.number="batchForm.min_batch_size" type="number" min="1" max="1000" class="form-control h-9 px-2 text-sm" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
+                <input
+                  v-model.number="batchForm.min_batch_size"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  class="form-control h-9 px-2 text-sm"
+                  :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling"
+                />
               </label>
+
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">最长等待 T(秒)</span>
-                <input v-model.number="batchForm.max_wait_seconds" type="number" min="0" max="86400" class="form-control h-9 px-2 text-sm" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
+                <input
+                  v-model.number="batchForm.max_wait_seconds"
+                  type="number"
+                  min="0"
+                  max="86400"
+                  class="form-control h-9 px-2 text-sm"
+                  :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling"
+                />
               </label>
+
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">最大文档数</span>
-                <input v-model.number="batchForm.max_docs" type="number" min="1" max="2000" class="form-control h-9 px-2 text-sm" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
+                <input
+                  v-model.number="batchForm.max_docs"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  class="form-control h-9 px-2 text-sm"
+                  :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling"
+                />
               </label>
+
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">并发 workers</span>
-                <input v-model.number="batchForm.max_workers" type="number" min="1" max="64" class="form-control h-9 px-2 text-sm" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
+                <input
+                  v-model.number="batchForm.max_workers"
+                  type="number"
+                  min="1"
+                  max="64"
+                  class="form-control h-9 px-2 text-sm"
+                  :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling"
+                />
               </label>
+
               <label class="flex items-end gap-2 text-sm pb-2">
                 <input v-model="batchForm.include_failed" type="checkbox" class="h-4 w-4" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
                 <span>包含历史失败文档</span>
               </label>
+
+              <label class="flex items-end gap-2 text-sm pb-2">
+                <input v-model="batchForm.strict_pairing" type="checkbox" class="h-4 w-4" :disabled="!canManage || batchSubmitting || documentStore.batchSyncPolling" />
+                <span>strict_pairing</span>
+              </label>
+            </div>
+
+            <div v-if="documentStore.currentSessionSummary" class="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-xs">
+              <p>
+                Session: {{ documentStore.currentSessionSummary.session_id || '-' }} · paired={{ documentStore.currentSessionSummary.paired_count }} ·
+                unpaired={{ documentStore.currentSessionSummary.unpaired_count }}
+              </p>
             </div>
 
             <p v-if="batchError" class="mt-2 text-sm text-[var(--color-danger)]">{{ batchError }}</p>
@@ -123,13 +179,21 @@
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span>任务: {{ documentStore.batchSyncTask.task_id }}</span>
                 <span>状态: <span class="font-medium">{{ documentStore.batchSyncTask.status }}</span></span>
-                <span>成功/失败: {{ documentStore.batchSyncTask.success_count }}/{{ documentStore.batchSyncTask.failed_count }}</span>
-                <span>处理进度: {{ documentStore.batchSyncTask.processed_count }}/{{ documentStore.batchSyncTask.queued_count }}</span>
+                <span>Session: {{ documentStore.batchSyncTask.session_id || '-' }}</span>
+                <span>进度: {{ documentStore.batchSyncTask.processed_count }}/{{ documentStore.batchSyncTask.queued_count }}</span>
+                <span>成功/失败/跳过: {{ documentStore.batchSyncTask.success_count }}/{{ documentStore.batchSyncTask.failed_count }}/{{ documentStore.batchSyncTask.skipped_count }}</span>
               </div>
               <p class="text-muted mt-1 text-xs">{{ documentStore.batchSyncTask.message }}</p>
+
               <p v-if="documentStore.batchSyncTask.failed_documents.length > 0" class="mt-1 text-xs text-[var(--color-warning)]">
                 失败文档: {{ documentStore.batchSyncTask.failed_documents.join(', ') }}
               </p>
+
+              <ul v-if="documentStore.batchSyncTask.skipped_documents.length > 0" class="mt-2 space-y-1 text-xs text-[var(--color-warning)]">
+                <li v-for="(item, index) in documentStore.batchSyncTask.skipped_documents" :key="`${item.document_id || item.file_name || index}`">
+                  {{ item.file_name || item.document_id || 'unknown' }} · {{ item.reason || 'skipped' }}
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -323,13 +387,13 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const documentStore = useDocumentStore();
+
 const showUploadPanel = ref(false);
 const showQaPanel = ref(false);
 const batchSubmitting = ref(false);
 const qaSubmitting = ref(false);
 const batchError = ref('');
 const qaError = ref('');
-const uploadSummary = ref<{ successCount: number; conflictCount: number; failedCount: number } | null>(null);
 
 const fileTypeOptions = ['pdf', 'doc', 'docx', 'txt', 'md', 'csv'];
 
@@ -348,11 +412,13 @@ const filters = reactive<{
 });
 
 const batchForm = reactive({
+  knowledge_base: 'default',
   min_batch_size: 10,
   max_wait_seconds: 300,
   max_docs: 200,
   max_workers: 8,
-  include_failed: true
+  include_failed: true,
+  strict_pairing: false
 });
 
 const qaForm = reactive<{
@@ -364,7 +430,6 @@ const qaForm = reactive<{
 });
 
 const statsLoading = computed(() => documentStore.loading && documentStore.stats.document_count === 0);
-
 const canManage = computed(() => authStore.role === 'admin' || authStore.role === 'reviewer');
 
 const selectedDocument = computed(() => {
@@ -440,6 +505,12 @@ const resetFilters = async (): Promise<void> => {
 const refresh = async (): Promise<void> => {
   await documentStore.refresh();
   syncFiltersFromStore();
+
+  try {
+    await documentStore.refreshCurrentSessionSummary(batchForm.knowledge_base);
+  } catch {
+    // ignore session refresh error during global refresh
+  }
 };
 
 const handlePageChange = async (page: number): Promise<void> => {
@@ -461,8 +532,14 @@ const handleSelectionChange = (ids: string[]): void => {
   }
 };
 
-const handleUploaded = (summary: { successCount: number; conflictCount: number; failedCount: number }): void => {
-  uploadSummary.value = summary;
+const refreshBatchSession = async (): Promise<void> => {
+  batchError.value = '';
+
+  try {
+    await documentStore.refreshCurrentSessionSummary(batchForm.knowledge_base.trim() || 'default');
+  } catch {
+    batchError.value = documentStore.error || '刷新 session 失败';
+  }
 };
 
 const handleStartBatchSync = async (): Promise<void> => {
@@ -491,14 +568,28 @@ const handleStartBatchSync = async (): Promise<void> => {
 
   batchSubmitting.value = true;
   try {
+    const knowledgeBase = batchForm.knowledge_base.trim() || 'default';
+    const summary = await documentStore.refreshCurrentSessionSummary(knowledgeBase);
+
+    if (batchForm.strict_pairing && summary.unpaired_count > 0) {
+      const confirmed = window.confirm(`strict_pairing=true 且当前有 ${summary.unpaired_count} 个未配对文档，继续将直接失败。是否继续启动？`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const task = await documentStore.triggerBatchSync({
+      knowledge_base: knowledgeBase,
       min_batch_size: batchForm.min_batch_size,
       max_wait_seconds: batchForm.max_wait_seconds,
       max_docs: batchForm.max_docs,
       max_workers: batchForm.max_workers,
-      include_failed: batchForm.include_failed
+      include_failed: batchForm.include_failed,
+      strict_pairing: batchForm.strict_pairing
     });
+
     await documentStore.pollBatchSyncTask(task.task_id);
+    await documentStore.refreshCurrentSessionSummary(knowledgeBase);
   } catch {
     batchError.value = documentStore.error || '启动批处理失败';
   } finally {
@@ -558,5 +649,11 @@ onMounted(async () => {
   syncFiltersFromStore();
   await documentStore.refresh();
   syncFiltersFromStore();
+
+  try {
+    await documentStore.refreshCurrentSessionSummary(batchForm.knowledge_base);
+  } catch {
+    // ignore when there is no open session
+  }
 });
 </script>

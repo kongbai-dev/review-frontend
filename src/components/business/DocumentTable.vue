@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section :class="wrapperClass">
     <div class="overflow-x-auto">
       <table class="min-w-full border-separate border-spacing-y-2 text-sm">
@@ -20,7 +20,9 @@
             <th class="px-3 py-2 font-medium whitespace-nowrap">大小</th>
             <th class="px-3 py-2 font-medium whitespace-nowrap">片段数</th>
             <th class="px-3 py-2 font-medium whitespace-nowrap">QA 数</th>
-            <th class="px-3 py-2 font-medium whitespace-nowrap">状态</th>
+            <th class="px-3 py-2 font-medium whitespace-nowrap">文档状态</th>
+            <th class="px-3 py-2 font-medium whitespace-nowrap">同步状态</th>
+            <th class="px-3 py-2 font-medium whitespace-nowrap">配对状态</th>
             <th class="px-3 py-2 text-right font-medium whitespace-nowrap">操作</th>
           </tr>
         </thead>
@@ -54,6 +56,13 @@
             <td class="px-3 py-3 align-top whitespace-nowrap">{{ item.qa_count }}</td>
             <td class="px-3 py-3 align-top whitespace-nowrap">
               <span class="status-pill" :class="statusTone(item.status)">{{ statusLabel(item.status) }}</span>
+            </td>
+            <td class="px-3 py-3 align-top whitespace-nowrap">
+              <span class="status-pill" :class="syncTone(item.sync_status)">{{ syncLabel(item.sync_status) }}</span>
+            </td>
+            <td class="px-3 py-3 align-top whitespace-nowrap">
+              <span class="status-pill" :class="pairTone(item.pair_status)">{{ pairLabel(item.pair_status) }}</span>
+              <p v-if="item.pair_error" class="mt-1 max-w-[240px] text-xs text-[var(--color-warning)]">{{ item.pair_error }}</p>
             </td>
             <td class="rounded-r-[1rem] px-3 py-3 text-right align-top whitespace-nowrap">
               <button
@@ -178,5 +187,39 @@ const statusTone = (status: DocumentStatus): string => {
   if (status === 'indexed') return 'text-[var(--color-success)]';
   if (status === 'processing') return 'text-[var(--color-warning)]';
   return 'text-[var(--color-danger)]';
+};
+
+const syncLabel = (status?: string): string => {
+  if (!status) return '-';
+  if (status === 'synced') return '已同步';
+  if (status === 'sync_pending') return '待同步';
+  if (status === 'sync_failed') return '同步失败';
+  return status;
+};
+
+const syncTone = (status?: string): string => {
+  if (!status) return 'text-[var(--color-text-secondary)]';
+  if (status === 'synced') return 'text-[var(--color-success)]';
+  if (status === 'sync_pending') return 'text-[var(--color-warning)]';
+  if (status === 'sync_failed') return 'text-[var(--color-danger)]';
+  return 'text-[var(--color-text-secondary)]';
+};
+
+const pairLabel = (status?: string): string => {
+  if (!status) return '-';
+  if (status === 'paired') return '已配对';
+  if (status === 'missing_csv') return '缺少CSV';
+  if (status === 'invalid_csv') return 'CSV无效';
+  if (status === 'ambiguous_pair') return '配对冲突';
+  if (status === 'pending_pair') return '待配对';
+  return status;
+};
+
+const pairTone = (status?: string): string => {
+  if (!status) return 'text-[var(--color-text-secondary)]';
+  if (status === 'paired') return 'text-[var(--color-success)]';
+  if (status === 'pending_pair') return 'text-[var(--color-primary)]';
+  if (status === 'missing_csv' || status === 'invalid_csv' || status === 'ambiguous_pair') return 'text-[var(--color-warning)]';
+  return 'text-[var(--color-text-secondary)]';
 };
 </script>
