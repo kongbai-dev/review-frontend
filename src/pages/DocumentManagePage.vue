@@ -220,6 +220,9 @@
               <span class="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]">状态</span>
               <select v-model="filters.status" class="form-control h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm shadow-none">
                 <option value="">全部</option>
+                <option value="synced">已同步</option>
+                <option value="sync_pending">待同步</option>
+                <option value="sync_failed">同步失败</option>
                 <option value="indexed">已索引</option>
                 <option value="processing">处理中</option>
                 <option value="failed">失败</option>

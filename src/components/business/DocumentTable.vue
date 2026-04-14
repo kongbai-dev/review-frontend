@@ -179,14 +179,20 @@ const formatBytes = (bytes: number): string => {
 
 const statusLabel = (status: DocumentStatus): string => {
   if (status === 'indexed') return '已索引';
+  if (status === 'synced') return '已同步';
   if (status === 'processing') return '处理中';
+  if (status === 'sync_pending') return '待同步';
+  if (status === 'queued') return '已排队';
+  if (status === 'running') return '执行中';
+  if (status === 'completed') return '已完成';
   return '失败';
 };
 
 const statusTone = (status: DocumentStatus): string => {
-  if (status === 'indexed') return 'text-[var(--color-success)]';
-  if (status === 'processing') return 'text-[var(--color-warning)]';
-  return 'text-[var(--color-danger)]';
+  if (status === 'indexed' || status === 'synced' || status === 'completed') return 'text-[var(--color-success)]';
+  if (status === 'processing' || status === 'sync_pending' || status === 'queued' || status === 'running') return 'text-[var(--color-warning)]';
+  if (status === 'failed' || status === 'sync_failed') return 'text-[var(--color-danger)]';
+  return 'text-[var(--color-text-secondary)]';
 };
 
 const syncLabel = (status?: string): string => {

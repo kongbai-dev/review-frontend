@@ -65,11 +65,7 @@ const expectStringArray = (value: unknown, path: string): string[] => {
 };
 
 const expectDocumentStatus = (value: unknown, path: string): DocumentStatus => {
-  const status = expectString(value, path);
-  if (status === 'indexed' || status === 'processing' || status === 'failed') {
-    return status;
-  }
-  throw new Error(`Contract mismatch: ${path} has invalid status`);
+  return expectString(value, path);
 };
 
 const expectOptionalDocumentType = (value: unknown, path: string): DocumentType | undefined => {

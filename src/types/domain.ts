@@ -1,7 +1,7 @@
 ﻿export type UserRole = 'admin' | 'reviewer' | 'observer';
 
 export type QAStatus = 'pending' | 'reviewed' | 'deprecated';
-export type DocumentStatus = 'indexed' | 'processing' | 'failed';
+export type DocumentStatus = string;
 export type DocumentSortField = 'uploaded_at' | 'file_name' | 'fragment_count' | 'qa_count';
 export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' | 'data';
 export type UploadMode = 'sync' | 'batch';
