@@ -8,7 +8,6 @@ import type {
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
-  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   IngestionTaskStatus,
@@ -62,11 +61,6 @@ interface DocumentState {
   qaGenerationStartResult: QAGenerationStartResult | null;
   qaGenerationTask: IngestionTaskStatus | null;
   qaGenerationPolling: boolean;
-  selectedDocumentDetail: DocumentDetail | null;
-  detailLoading: boolean;
-  detailError: string;
-  detailDocumentId: string;
-  detailCache: Record<string, DocumentDetail>;
   error: string;
 }
 
@@ -102,11 +96,6 @@ export const useDocumentStore = defineStore('documents', {
     qaGenerationStartResult: null,
     qaGenerationTask: null,
     qaGenerationPolling: false,
-    selectedDocumentDetail: null,
-    detailLoading: false,
-    detailError: '',
-    detailDocumentId: '',
-    detailCache: {},
     error: ''
   }),
 
@@ -139,55 +128,6 @@ export const useDocumentStore = defineStore('documents', {
 
     clearSelection(): void {
       this.selectedDocumentIds = [];
-    },
-
-    clearDocumentDetail(): void {
-      this.selectedDocumentDetail = null;
-      this.detailLoading = false;
-      this.detailError = '';
-      this.detailDocumentId = '';
-    },
-
-    async fetchDocumentDetail(documentId: string, force = false): Promise<DocumentDetail> {
-      const normalizedId = documentId.trim();
-      if (!normalizedId) {
-        throw new Error('document_id is required');
-      }
-
-      this.detailError = '';
-      this.detailDocumentId = normalizedId;
-
-      if (!force) {
-        const cached = this.detailCache[normalizedId];
-        if (cached) {
-          this.selectedDocumentDetail = cached;
-          this.detailLoading = false;
-          return cached;
-        }
-      }
-
-      this.detailLoading = true;
-
-      try {
-        const detail = await documentApi.getDetail(normalizedId);
-        this.detailCache[normalizedId] = detail;
-
-        if (this.detailDocumentId === normalizedId) {
-          this.selectedDocumentDetail = detail;
-        }
-
-        return detail;
-      } catch (error) {
-        if (this.detailDocumentId === normalizedId) {
-          this.selectedDocumentDetail = null;
-          this.detailError = normalizeError(error);
-        }
-        throw error;
-      } finally {
-        if (this.detailDocumentId === normalizedId) {
-          this.detailLoading = false;
-        }
-      }
     },
 
     clearUploadState(): void {

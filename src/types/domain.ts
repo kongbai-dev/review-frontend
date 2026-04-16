@@ -118,36 +118,6 @@ export interface KnowledgeDocument {
   latest_task_status?: string;
 }
 
-export interface DocumentDetail extends KnowledgeDocument {
-  source_path?: string;
-  authors: string[];
-  year?: number;
-  journal?: string;
-  conference?: string;
-  publisher?: string;
-  volume?: string;
-  issue?: string;
-  pages?: string;
-  doi?: string;
-  abstract?: string;
-  topics: string[];
-  scenes: string[];
-  language?: string;
-  indexed_at?: string;
-  last_error_code?: string;
-  last_error_message?: string;
-  uploaded_by_user_id?: number;
-  latest_task_id?: string;
-  latest_task_stage?: string;
-  latest_task_error_message?: string;
-  latest_task_updated_at?: string;
-  sync_attempts: number;
-  sync_last_error?: string;
-  minio_uploaded_at?: string;
-  qa_status?: string;
-  csv_md5?: string;
-}
-
 export interface DocumentListQuery {
   page: number;
   page_size: number;

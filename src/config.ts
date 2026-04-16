@@ -20,7 +20,6 @@ export const API_CONFIG = {
     DOCUMENT_STATS: '/knowledge/documents/stats',
     DOCUMENT_LIST: '/knowledge/documents',
     DOCUMENT_UPLOAD: '/knowledge/documents',
-    DOCUMENT_RESOURCE: (id: string) => `/knowledge/documents/${id}`,
     DOCUMENT_DOWNLOAD: (id: string) => `/knowledge/documents/${id}/download`,
     DOCUMENT_BATCH_UPLOAD_DOC_FILES: '/knowledge/documents/batch-upload/doc-files',
     DOCUMENT_BATCH_UPLOAD_CSV_FILES: '/knowledge/documents/batch-upload/csv-files',

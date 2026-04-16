@@ -357,13 +357,6 @@
             </p>
           </div>
 
-          <DocumentDetailPanel
-            :detail="documentStore.selectedDocumentDetail"
-            :loading="documentStore.detailLoading"
-            :error="documentStore.detailError"
-            :selected-count="documentStore.selectedCount"
-            @refresh="handleRefreshDetail"
-          />
         </div>
 
         <DocumentTable
@@ -388,7 +381,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import DocumentDetailPanel from '@/components/business/DocumentDetailPanel.vue';
 import DocumentTable from '@/components/business/DocumentTable.vue';
 import DocumentUploadPanel from '@/components/business/DocumentUploadPanel.vue';
 import { documentFileTypeOptions, useDocumentFilters } from '@/composables/useDocumentFilters';
@@ -439,10 +431,6 @@ const selectedDocument = computed(() => {
   const targetId = documentStore.selectedDocumentIds[0];
   return documentStore.items.find((item) => item.document_id === targetId) ?? null;
 });
-
-const selectedSingleDocumentId = computed(() =>
-  documentStore.selectedDocumentIds.length === 1 ? documentStore.selectedDocumentIds[0] : ''
-);
 
 const canOpenQaPanel = computed(() => canManage.value && documentStore.selectedCount === 1);
 
@@ -513,18 +501,6 @@ const handleSelectionChange = (ids: string[]): void => {
   documentStore.setSelectedDocumentIds(ids);
   if (ids.length !== 1) {
     showQaPanel.value = false;
-  }
-};
-
-const handleRefreshDetail = async (): Promise<void> => {
-  if (!selectedSingleDocumentId.value) {
-    return;
-  }
-
-  try {
-    await documentStore.fetchDocumentDetail(selectedSingleDocumentId.value, true);
-  } catch {
-    // keep detail error visible in detail panel
   }
 };
 
@@ -637,23 +613,6 @@ watch(
   () => route.query.openUpload,
   (value) => {
     showUploadPanel.value = value === '1';
-  },
-  { immediate: true }
-);
-
-watch(
-  () => selectedSingleDocumentId.value,
-  async (documentId) => {
-    if (!documentId) {
-      documentStore.clearDocumentDetail();
-      return;
-    }
-
-    try {
-      await documentStore.fetchDocumentDetail(documentId);
-    } catch {
-      // keep detail error visible in detail panel
-    }
   },
   { immediate: true }
 );

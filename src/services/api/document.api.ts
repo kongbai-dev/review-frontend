@@ -9,7 +9,6 @@ import type {
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
-  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   DocumentStatus,
@@ -128,45 +127,6 @@ const parseDocument = (raw: unknown, path = 'document'): KnowledgeDocument => {
     file_md5: expectOptionalString(raw.file_md5, `${path}.file_md5`),
     object_key: expectOptionalString(raw.object_key, `${path}.object_key`),
     latest_task_status: expectOptionalString(raw.latest_task_status, `${path}.latest_task_status`)
-  };
-};
-
-const parseDocumentDetail = (raw: unknown, path = 'documentDetail'): DocumentDetail => {
-  if (!isObject(raw)) {
-    throw new Error(`Contract mismatch: ${path} must be object`);
-  }
-
-  const base = parseDocument(raw, path);
-
-  return {
-    ...base,
-    source_path: expectOptionalString(raw.source_path, `${path}.source_path`),
-    authors: raw.authors === undefined || raw.authors === null ? [] : expectStringArray(raw.authors, `${path}.authors`),
-    year: expectOptionalNumber(raw.year, `${path}.year`),
-    journal: expectOptionalString(raw.journal, `${path}.journal`),
-    conference: expectOptionalString(raw.conference, `${path}.conference`),
-    publisher: expectOptionalString(raw.publisher, `${path}.publisher`),
-    volume: expectOptionalString(raw.volume, `${path}.volume`),
-    issue: expectOptionalString(raw.issue, `${path}.issue`),
-    pages: expectOptionalString(raw.pages, `${path}.pages`),
-    doi: expectOptionalString(raw.doi, `${path}.doi`),
-    abstract: expectOptionalString(raw.abstract, `${path}.abstract`),
-    topics: raw.topics === undefined || raw.topics === null ? [] : expectStringArray(raw.topics, `${path}.topics`),
-    scenes: raw.scenes === undefined || raw.scenes === null ? [] : expectStringArray(raw.scenes, `${path}.scenes`),
-    language: expectOptionalString(raw.language, `${path}.language`),
-    indexed_at: expectOptionalString(raw.indexed_at, `${path}.indexed_at`),
-    last_error_code: expectOptionalString(raw.last_error_code, `${path}.last_error_code`),
-    last_error_message: expectOptionalString(raw.last_error_message, `${path}.last_error_message`),
-    uploaded_by_user_id: expectOptionalNumber(raw.uploaded_by_user_id, `${path}.uploaded_by_user_id`),
-    latest_task_id: expectOptionalString(raw.latest_task_id, `${path}.latest_task_id`),
-    latest_task_stage: expectOptionalString(raw.latest_task_stage, `${path}.latest_task_stage`),
-    latest_task_error_message: expectOptionalString(raw.latest_task_error_message, `${path}.latest_task_error_message`),
-    latest_task_updated_at: expectOptionalString(raw.latest_task_updated_at, `${path}.latest_task_updated_at`),
-    sync_attempts: expectOptionalNumber(raw.sync_attempts, `${path}.sync_attempts`) ?? 0,
-    sync_last_error: expectOptionalString(raw.sync_last_error, `${path}.sync_last_error`),
-    minio_uploaded_at: expectOptionalString(raw.minio_uploaded_at, `${path}.minio_uploaded_at`),
-    qa_status: expectOptionalString(raw.qa_status, `${path}.qa_status`),
-    csv_md5: expectOptionalString(raw.csv_md5, `${path}.csv_md5`)
   };
 };
 
@@ -589,25 +549,5 @@ export const documentApi = {
       }
       throw error;
     }
-  },
-
-  async getDetail(documentId: string): Promise<DocumentDetail> {
-    if (API_CONFIG.USE_MOCK) {
-      const mockDocumentApi = await getDocumentMockApi();
-      return mockDocumentApi.getDetail(documentId);
-    }
-
-    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
-    return parseDocumentDetail(response.data, 'documentDetail');
-  },
-
-  async remove(documentId: string): Promise<void> {
-    if (API_CONFIG.USE_MOCK) {
-      const mockDocumentApi = await getDocumentMockApi();
-      await mockDocumentApi.remove(documentId);
-      return;
-    }
-
-    await http.delete(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
   }
 };

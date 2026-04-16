@@ -7,7 +7,6 @@ import type {
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
-  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   DocumentStatus,
@@ -885,64 +884,6 @@ export const mockDocumentApi = {
     ].join('\n');
 
     return `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
-  },
-
-  async getDetail(documentId: string): Promise<DocumentDetail> {
-    await sleep(100);
-    const target = mockDocuments.find((item) => item.document_id === documentId);
-    if (!target) {
-      throw mockHttpError(404, 'document not found');
-    }
-    const isFailed = target.status === 'failed';
-    const objectKey = target.object_key || `raw-docs/${target.knowledge_base || 'default'}/${target.file_name}`;
-
-    return {
-      ...target,
-      source_path: target.local_file_path || `knowledge_data/docs/${target.file_name}`,
-      authors: ['Mock Author'],
-      year: 2026,
-      journal: undefined,
-      conference: undefined,
-      publisher: undefined,
-      volume: undefined,
-      issue: undefined,
-      pages: undefined,
-      doi: undefined,
-      abstract: undefined,
-      topics: [target.document_type || 'general'],
-      scenes: ['engineer'],
-      language: 'zh',
-      indexed_at: target.status === 'indexed' ? target.uploaded_at : undefined,
-      last_error_code: isFailed ? 'MOCK_SYNC_FAILED' : undefined,
-      last_error_message: isFailed ? 'mock pipeline failed' : undefined,
-      uploaded_by_user_id: 1,
-      latest_task_id: `task_${target.document_id}`,
-      latest_task_status: target.latest_task_status || (isFailed ? 'failed' : 'completed'),
-      latest_task_stage: isFailed ? 'sync_failed' : 'synced',
-      latest_task_error_message: isFailed ? 'mock pipeline failed' : undefined,
-      latest_task_updated_at: target.uploaded_at,
-      sync_attempts: isFailed ? 2 : 0,
-      sync_last_error: isFailed ? 'mock sync retry exhausted' : '',
-      minio_uploaded_at: target.uploaded_at,
-      qa_status: target.qa_count > 0 ? 'qa_ready' : 'qa_pending',
-      csv_md5: target.csv_file_name ? `csv-md5-${target.document_id}` : undefined,
-      object_key: objectKey,
-      file_md5: target.file_md5 || `file-md5-${target.document_id}`
-    };
-  },
-
-  async remove(documentId: string): Promise<void> {
-    await sleep(100);
-    const target = mockDocuments.find((item) => item.document_id === documentId);
-    mockDocuments = mockDocuments.filter((item) => item.document_id !== documentId);
-
-    if (target?.knowledge_base) {
-      const session = findOpenSession(target.knowledge_base);
-      if (session) {
-        session.document_ids = session.document_ids.filter((id) => id !== documentId);
-        recomputePairing(session);
-      }
-    }
   }
 };
 
