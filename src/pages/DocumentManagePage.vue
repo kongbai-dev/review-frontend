@@ -356,6 +356,14 @@
               任务详情：status={{ documentStore.qaGenerationTask.status }} · stage={{ documentStore.qaGenerationTask.stage }} · total_generated_qas={{ documentStore.qaGenerationTask.total_generated_qas }}
             </p>
           </div>
+
+          <DocumentDetailPanel
+            :detail="documentStore.selectedDocumentDetail"
+            :loading="documentStore.detailLoading"
+            :error="documentStore.detailError"
+            :selected-count="documentStore.selectedCount"
+            @refresh="handleRefreshDetail"
+          />
         </div>
 
         <DocumentTable
@@ -380,11 +388,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import DocumentDetailPanel from '@/components/business/DocumentDetailPanel.vue';
 import DocumentTable from '@/components/business/DocumentTable.vue';
 import DocumentUploadPanel from '@/components/business/DocumentUploadPanel.vue';
+import { documentFileTypeOptions, useDocumentFilters } from '@/composables/useDocumentFilters';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDocumentStore } from '@/stores/document.store';
-import type { DocumentSortField, DocumentStatus, KnowledgeDocument, QAGenerationMode, SortOrder } from '@/types/domain';
+import type { KnowledgeDocument, QAGenerationMode } from '@/types/domain';
 
 const route = useRoute();
 const router = useRouter();
@@ -398,21 +408,8 @@ const qaSubmitting = ref(false);
 const batchError = ref('');
 const qaError = ref('');
 
-const fileTypeOptions = ['pdf', 'doc', 'docx', 'txt', 'md', 'csv'];
-
-const filters = reactive<{
-  keyword: string;
-  file_type: string;
-  status: DocumentStatus | '';
-  sort_by: DocumentSortField;
-  order: SortOrder;
-}>({
-  keyword: '',
-  file_type: '',
-  status: '',
-  sort_by: 'uploaded_at',
-  order: 'desc'
-});
+const fileTypeOptions = documentFileTypeOptions;
+const { filters, syncFromQuery: syncFiltersFromStore, reset: resetFilterState, toQuery: filtersToQuery } = useDocumentFilters();
 
 const batchForm = reactive({
   knowledge_base: 'default',
@@ -443,15 +440,11 @@ const selectedDocument = computed(() => {
   return documentStore.items.find((item) => item.document_id === targetId) ?? null;
 });
 
-const canOpenQaPanel = computed(() => canManage.value && documentStore.selectedCount === 1);
+const selectedSingleDocumentId = computed(() =>
+  documentStore.selectedDocumentIds.length === 1 ? documentStore.selectedDocumentIds[0] : ''
+);
 
-const syncFiltersFromStore = (): void => {
-  filters.keyword = documentStore.query.keyword ?? '';
-  filters.file_type = documentStore.query.file_type ?? '';
-  filters.status = documentStore.query.status ?? '';
-  filters.sort_by = documentStore.query.sort_by ?? 'uploaded_at';
-  filters.order = documentStore.query.order ?? 'desc';
-};
+const canOpenQaPanel = computed(() => canManage.value && documentStore.selectedCount === 1);
 
 const clearUploadFlag = async (): Promise<void> => {
   if (route.query.openUpload === undefined) {
@@ -479,35 +472,23 @@ const applyFilters = async (): Promise<void> => {
   await documentStore.fetchList({
     page: 1,
     page_size: documentStore.pageSize,
-    keyword: filters.keyword,
-    file_type: filters.file_type,
-    status: filters.status,
-    sort_by: filters.sort_by,
-    order: filters.order
+    ...filtersToQuery()
   });
 };
 
 const resetFilters = async (): Promise<void> => {
-  filters.keyword = '';
-  filters.file_type = '';
-  filters.status = '';
-  filters.sort_by = 'uploaded_at';
-  filters.order = 'desc';
+  resetFilterState();
 
   await documentStore.fetchList({
     page: 1,
     page_size: documentStore.pageSize,
-    keyword: '',
-    file_type: '',
-    status: '',
-    sort_by: 'uploaded_at',
-    order: 'desc'
+    ...filtersToQuery()
   });
 };
 
 const refresh = async (): Promise<void> => {
   await documentStore.refresh();
-  syncFiltersFromStore();
+  syncFiltersFromStore(documentStore.query);
 
   try {
     await documentStore.refreshCurrentSessionSummary(batchForm.knowledge_base);
@@ -532,6 +513,18 @@ const handleSelectionChange = (ids: string[]): void => {
   documentStore.setSelectedDocumentIds(ids);
   if (ids.length !== 1) {
     showQaPanel.value = false;
+  }
+};
+
+const handleRefreshDetail = async (): Promise<void> => {
+  if (!selectedSingleDocumentId.value) {
+    return;
+  }
+
+  try {
+    await documentStore.fetchDocumentDetail(selectedSingleDocumentId.value, true);
+  } catch {
+    // keep detail error visible in detail panel
   }
 };
 
@@ -648,10 +641,27 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => selectedSingleDocumentId.value,
+  async (documentId) => {
+    if (!documentId) {
+      documentStore.clearDocumentDetail();
+      return;
+    }
+
+    try {
+      await documentStore.fetchDocumentDetail(documentId);
+    } catch {
+      // keep detail error visible in detail panel
+    }
+  },
+  { immediate: true }
+);
+
 onMounted(async () => {
-  syncFiltersFromStore();
+  syncFiltersFromStore(documentStore.query);
   await documentStore.refresh();
-  syncFiltersFromStore();
+  syncFiltersFromStore(documentStore.query);
 
   try {
     await documentStore.refreshCurrentSessionSummary(batchForm.knowledge_base);

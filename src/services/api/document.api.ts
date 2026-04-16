@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { API_CONFIG } from '@/config';
+import { expectNumber, expectOptionalNumber, expectOptionalString, expectString, expectStringArray, isObject } from '@/lib/contract';
 import { http } from '@/services/http';
-import { mockDocumentApi } from '@/services/mock/document.mock';
 import type { PagedListResponse } from '@/types/api';
 import type {
   BatchSyncSkippedDocument,
@@ -9,6 +9,7 @@ import type {
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
+  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   DocumentStatus,
@@ -26,42 +27,13 @@ import type {
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+let documentMockApiPromise: Promise<typeof import('@/services/mock/document.mock').mockDocumentApi> | null = null;
 
-const expectString = (value: unknown, path: string): string => {
-  if (typeof value !== 'string') {
-    throw new Error(`Contract mismatch: ${path} must be string`);
+const getDocumentMockApi = async (): Promise<typeof import('@/services/mock/document.mock').mockDocumentApi> => {
+  if (!documentMockApiPromise) {
+    documentMockApiPromise = import('@/services/mock/document.mock').then((module) => module.mockDocumentApi);
   }
-  return value;
-};
-
-const expectOptionalString = (value: unknown, path: string): string | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  return expectString(value, path);
-};
-
-const expectNumber = (value: unknown, path: string): number => {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`Contract mismatch: ${path} must be number`);
-  }
-  return value;
-};
-
-const expectOptionalNumber = (value: unknown, path: string): number | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  return expectNumber(value, path);
-};
-
-const expectStringArray = (value: unknown, path: string): string[] => {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new Error(`Contract mismatch: ${path} must be string[]`);
-  }
-  return value;
+  return documentMockApiPromise;
 };
 
 const expectDocumentStatus = (value: unknown, path: string): DocumentStatus => {
@@ -156,6 +128,45 @@ const parseDocument = (raw: unknown, path = 'document'): KnowledgeDocument => {
     file_md5: expectOptionalString(raw.file_md5, `${path}.file_md5`),
     object_key: expectOptionalString(raw.object_key, `${path}.object_key`),
     latest_task_status: expectOptionalString(raw.latest_task_status, `${path}.latest_task_status`)
+  };
+};
+
+const parseDocumentDetail = (raw: unknown, path = 'documentDetail'): DocumentDetail => {
+  if (!isObject(raw)) {
+    throw new Error(`Contract mismatch: ${path} must be object`);
+  }
+
+  const base = parseDocument(raw, path);
+
+  return {
+    ...base,
+    source_path: expectOptionalString(raw.source_path, `${path}.source_path`),
+    authors: raw.authors === undefined || raw.authors === null ? [] : expectStringArray(raw.authors, `${path}.authors`),
+    year: expectOptionalNumber(raw.year, `${path}.year`),
+    journal: expectOptionalString(raw.journal, `${path}.journal`),
+    conference: expectOptionalString(raw.conference, `${path}.conference`),
+    publisher: expectOptionalString(raw.publisher, `${path}.publisher`),
+    volume: expectOptionalString(raw.volume, `${path}.volume`),
+    issue: expectOptionalString(raw.issue, `${path}.issue`),
+    pages: expectOptionalString(raw.pages, `${path}.pages`),
+    doi: expectOptionalString(raw.doi, `${path}.doi`),
+    abstract: expectOptionalString(raw.abstract, `${path}.abstract`),
+    topics: raw.topics === undefined || raw.topics === null ? [] : expectStringArray(raw.topics, `${path}.topics`),
+    scenes: raw.scenes === undefined || raw.scenes === null ? [] : expectStringArray(raw.scenes, `${path}.scenes`),
+    language: expectOptionalString(raw.language, `${path}.language`),
+    indexed_at: expectOptionalString(raw.indexed_at, `${path}.indexed_at`),
+    last_error_code: expectOptionalString(raw.last_error_code, `${path}.last_error_code`),
+    last_error_message: expectOptionalString(raw.last_error_message, `${path}.last_error_message`),
+    uploaded_by_user_id: expectOptionalNumber(raw.uploaded_by_user_id, `${path}.uploaded_by_user_id`),
+    latest_task_id: expectOptionalString(raw.latest_task_id, `${path}.latest_task_id`),
+    latest_task_stage: expectOptionalString(raw.latest_task_stage, `${path}.latest_task_stage`),
+    latest_task_error_message: expectOptionalString(raw.latest_task_error_message, `${path}.latest_task_error_message`),
+    latest_task_updated_at: expectOptionalString(raw.latest_task_updated_at, `${path}.latest_task_updated_at`),
+    sync_attempts: expectOptionalNumber(raw.sync_attempts, `${path}.sync_attempts`) ?? 0,
+    sync_last_error: expectOptionalString(raw.sync_last_error, `${path}.sync_last_error`),
+    minio_uploaded_at: expectOptionalString(raw.minio_uploaded_at, `${path}.minio_uploaded_at`),
+    qa_status: expectOptionalString(raw.qa_status, `${path}.qa_status`),
+    csv_md5: expectOptionalString(raw.csv_md5, `${path}.csv_md5`)
   };
 };
 
@@ -406,6 +417,7 @@ const buildListParams = (query: DocumentListQuery): Record<string, string | numb
 export const documentApi = {
   async getStats(): Promise<DocumentStats> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getStats();
     }
 
@@ -415,6 +427,7 @@ export const documentApi = {
 
   async getList(query: DocumentListQuery): Promise<PagedListResponse<KnowledgeDocument>> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getList(query);
     }
 
@@ -427,6 +440,7 @@ export const documentApi = {
 
   async uploadSyncDocument(payload: UploadSyncDocumentPayload): Promise<UploadDocumentResult> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.uploadSyncDocument(payload);
     }
 
@@ -459,6 +473,7 @@ export const documentApi = {
 
   async batchUploadDocFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.batchUploadDocFiles(payload);
     }
 
@@ -479,6 +494,7 @@ export const documentApi = {
 
   async batchUploadCsvFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.batchUploadCsvFiles(payload);
     }
 
@@ -499,6 +515,7 @@ export const documentApi = {
 
   async getCurrentBatchSession(knowledgeBase = 'default'): Promise<UploadSessionSummary> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getCurrentBatchSession(knowledgeBase);
     }
 
@@ -513,6 +530,7 @@ export const documentApi = {
 
   async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.startBatchSync(payload);
     }
 
@@ -522,6 +540,7 @@ export const documentApi = {
 
   async getBatchSyncTask(taskId: string): Promise<BatchSyncTaskStatus> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getBatchSyncTask(taskId);
     }
 
@@ -531,6 +550,7 @@ export const documentApi = {
 
   async startQaGeneration(payload: QAGenerationPayload): Promise<QAGenerationStartResult> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.startQaGeneration(payload);
     }
 
@@ -546,6 +566,7 @@ export const documentApi = {
 
   async getQaGenerationTask(taskId: string): Promise<IngestionTaskStatus> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getQaGenerationTask(taskId);
     }
 
@@ -555,6 +576,7 @@ export const documentApi = {
 
   async getDownloadUrl(documentId: string): Promise<string> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getDownloadUrl(documentId);
     }
 
@@ -569,17 +591,19 @@ export const documentApi = {
     }
   },
 
-  async getDetail(documentId: string): Promise<KnowledgeDocument> {
+  async getDetail(documentId: string): Promise<DocumentDetail> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       return mockDocumentApi.getDetail(documentId);
     }
 
     const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_RESOURCE(documentId));
-    return parseDocument(response.data, 'documentDetail');
+    return parseDocumentDetail(response.data, 'documentDetail');
   },
 
   async remove(documentId: string): Promise<void> {
     if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
       await mockDocumentApi.remove(documentId);
       return;
     }

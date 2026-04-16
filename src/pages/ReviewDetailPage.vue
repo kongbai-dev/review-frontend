@@ -76,6 +76,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQAStore } from '@/stores/qa.store';
 import type { ReviewPayload } from '@/types/domain';
+import { formatDateTime } from '@/lib/format';
 
 interface DraftCache {
   qaId: string;
@@ -115,7 +116,7 @@ const draftStatusText = computed(() => {
   if (!draftSavedAt.value) {
     return '草稿自动保存已启用，尚未保存。';
   }
-  return `草稿已自动保存：${new Date(draftSavedAt.value).toLocaleString()}`;
+  return `草稿已自动保存：${formatDateTime(draftSavedAt.value)}`;
 });
 
 const draftKey = (qaId: string): string => `review_draft_${qaId}`;

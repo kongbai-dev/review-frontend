@@ -1,41 +1,19 @@
-﻿import { API_CONFIG } from '@/config';
+import { API_CONFIG } from '@/config';
+import { expectNumber, expectOptionalNumber, expectOptionalString, expectString, isObject } from '@/lib/contract';
 import { http } from '@/services/http';
-import { mockMemberApi } from '@/services/mock/member.mock';
 import type { PagedListResponse } from '@/types/api';
 import type { MemberRankingItem, MemberRankingQuery } from '@/types/domain';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+let memberMockApiPromise: Promise<typeof import('@/services/mock/member.mock').mockMemberApi> | null = null;
 
-const expectString = (value: unknown, path: string): string => {
-  if (typeof value !== 'string') {
-    throw new Error(`Contract mismatch: ${path} must be string`);
+const getMemberMockApi = async (): Promise<typeof import('@/services/mock/member.mock').mockMemberApi> => {
+  if (!memberMockApiPromise) {
+    memberMockApiPromise = import('@/services/mock/member.mock').then((module) => module.mockMemberApi);
   }
-  return value;
-};
-
-const expectOptionalString = (value: unknown, path: string): string | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  return expectString(value, path);
-};
-
-const expectNumber = (value: unknown, path: string): number => {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`Contract mismatch: ${path} must be number`);
-  }
-  return value;
-};
-
-const optionalNumber = (value: unknown, fallback: number, path: string): number => {
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-  return expectNumber(value, path);
+  return memberMockApiPromise;
 };
 
 const parseRankingItem = (raw: unknown, path = 'member', index = 0): MemberRankingItem => {
@@ -44,14 +22,14 @@ const parseRankingItem = (raw: unknown, path = 'member', index = 0): MemberRanki
   }
 
   return {
-    rank: optionalNumber(raw.rank, index + 1, `${path}.rank`),
+    rank: expectOptionalNumber(raw.rank, `${path}.rank`) ?? index + 1,
     user_id: expectString(raw.user_id, `${path}.user_id`),
     username: expectString(raw.username, `${path}.username`),
     display_name: expectOptionalString(raw.display_name, `${path}.display_name`),
     uploaded_document_count: expectNumber(raw.uploaded_document_count, `${path}.uploaded_document_count`),
     reviewed_qa_count: expectNumber(raw.reviewed_qa_count, `${path}.reviewed_qa_count`),
-    deprecated_qa_count: optionalNumber(raw.deprecated_qa_count, 0, `${path}.deprecated_qa_count`),
-    processed_qa_count: optionalNumber(raw.processed_qa_count, 0, `${path}.processed_qa_count`),
+    deprecated_qa_count: expectOptionalNumber(raw.deprecated_qa_count, `${path}.deprecated_qa_count`) ?? 0,
+    processed_qa_count: expectOptionalNumber(raw.processed_qa_count, `${path}.processed_qa_count`) ?? 0,
     last_active_at: expectOptionalString(raw.last_active_at, `${path}.last_active_at`)
   };
 };
@@ -88,6 +66,7 @@ const buildParams = (query: MemberRankingQuery): Record<string, string | number>
 export const memberApi = {
   async getRankings(query: MemberRankingQuery): Promise<PagedListResponse<MemberRankingItem>> {
     if (API_CONFIG.USE_MOCK) {
+      const mockMemberApi = await getMemberMockApi();
       return mockMemberApi.getRankings(query);
     }
 

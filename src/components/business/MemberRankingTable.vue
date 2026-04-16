@@ -28,7 +28,7 @@
             <td class="px-3 py-3 align-top text-[var(--color-success)]">{{ item.uploaded_document_count }}</td>
             <td class="px-3 py-3 align-top text-[var(--color-primary)]">{{ item.reviewed_qa_count }}</td>
             <td class="rounded-r-[1rem] px-3 py-3 align-top text-xs text-[var(--color-text-secondary)]">
-              {{ item.last_active_at ? new Date(item.last_active_at).toLocaleString() : '--' }}
+              {{ formatDateTime(item.last_active_at) }}
             </td>
           </tr>
         </tbody>
@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/lib/format';
 import type { MemberRankingItem } from '@/types/domain';
 
 withDefaults(

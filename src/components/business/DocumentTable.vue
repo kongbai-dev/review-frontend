@@ -97,6 +97,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import PaginationControls from '@/components/business/PaginationControls.vue';
+import { formatBytes, formatDateTime } from '@/lib/format';
 import type { DocumentStatus, KnowledgeDocument } from '@/types/domain';
 
 const props = withDefaults(
@@ -169,13 +170,7 @@ const toggleAllSelection = (): void => {
   emit('update:selectedIds', Array.from(next));
 };
 
-const formatDate = (value: string): string => new Date(value).toLocaleString();
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-};
+const formatDate = (value: string): string => formatDateTime(value);
 
 const statusLabel = (status: DocumentStatus): string => {
   if (status === 'indexed') return '已索引';

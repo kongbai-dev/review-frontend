@@ -1,11 +1,14 @@
-﻿import { defineStore } from 'pinia';
+import { defineStore } from 'pinia';
+import { pollUntil } from '@/lib/async';
 import { documentApi } from '@/services/api/document.api';
 import { normalizeError } from '@/utils/error';
+import type { PagedListResponse } from '@/types/api';
 import type {
   BatchSyncStartPayload,
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
+  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   IngestionTaskStatus,
@@ -59,6 +62,11 @@ interface DocumentState {
   qaGenerationStartResult: QAGenerationStartResult | null;
   qaGenerationTask: IngestionTaskStatus | null;
   qaGenerationPolling: boolean;
+  selectedDocumentDetail: DocumentDetail | null;
+  detailLoading: boolean;
+  detailError: string;
+  detailDocumentId: string;
+  detailCache: Record<string, DocumentDetail>;
   error: string;
 }
 
@@ -71,11 +79,6 @@ const triggerBrowserDownload = (url: string): void => {
   anchor.click();
   anchor.remove();
 };
-
-const wait = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 
 const terminalBatchStatus = new Set(['skipped', 'completed', 'failed']);
 const terminalTaskStatus = new Set(['completed', 'failed', 'canceled', 'cancelled']);
@@ -99,6 +102,11 @@ export const useDocumentStore = defineStore('documents', {
     qaGenerationStartResult: null,
     qaGenerationTask: null,
     qaGenerationPolling: false,
+    selectedDocumentDetail: null,
+    detailLoading: false,
+    detailError: '',
+    detailDocumentId: '',
+    detailCache: {},
     error: ''
   }),
 
@@ -133,10 +141,80 @@ export const useDocumentStore = defineStore('documents', {
       this.selectedDocumentIds = [];
     },
 
+    clearDocumentDetail(): void {
+      this.selectedDocumentDetail = null;
+      this.detailLoading = false;
+      this.detailError = '';
+      this.detailDocumentId = '';
+    },
+
+    async fetchDocumentDetail(documentId: string, force = false): Promise<DocumentDetail> {
+      const normalizedId = documentId.trim();
+      if (!normalizedId) {
+        throw new Error('document_id is required');
+      }
+
+      this.detailError = '';
+      this.detailDocumentId = normalizedId;
+
+      if (!force) {
+        const cached = this.detailCache[normalizedId];
+        if (cached) {
+          this.selectedDocumentDetail = cached;
+          this.detailLoading = false;
+          return cached;
+        }
+      }
+
+      this.detailLoading = true;
+
+      try {
+        const detail = await documentApi.getDetail(normalizedId);
+        this.detailCache[normalizedId] = detail;
+
+        if (this.detailDocumentId === normalizedId) {
+          this.selectedDocumentDetail = detail;
+        }
+
+        return detail;
+      } catch (error) {
+        if (this.detailDocumentId === normalizedId) {
+          this.selectedDocumentDetail = null;
+          this.detailError = normalizeError(error);
+        }
+        throw error;
+      } finally {
+        if (this.detailDocumentId === normalizedId) {
+          this.detailLoading = false;
+        }
+      }
+    },
+
     clearUploadState(): void {
       this.syncUploadResult = null;
       this.batchUploadDocResult = null;
       this.batchUploadCsvResult = null;
+    },
+
+    applyListResponse(list: PagedListResponse<KnowledgeDocument>, queryBase: DocumentListQuery): void {
+      this.items = list.items;
+      this.total = list.total;
+      this.query = {
+        ...queryBase,
+        page: list.page,
+        page_size: list.page_size
+      };
+      this.syncSelectionWithList();
+    },
+
+    async refreshStatsAndList(queryBase: DocumentListQuery): Promise<void> {
+      const [stats, list] = await Promise.all([
+        documentApi.getStats(),
+        documentApi.getList(queryBase)
+      ]);
+
+      this.stats = stats;
+      this.applyListResponse(list, queryBase);
     },
 
     async fetchStats(): Promise<void> {
@@ -155,11 +233,7 @@ export const useDocumentStore = defineStore('documents', {
 
       try {
         const response = await documentApi.getList(this.query);
-        this.items = response.items;
-        this.total = response.total;
-        this.query.page = response.page;
-        this.query.page_size = response.page_size;
-        this.syncSelectionWithList();
+        this.applyListResponse(response, this.query);
       } catch (error) {
         this.error = normalizeError(error);
         throw error;
@@ -173,17 +247,7 @@ export const useDocumentStore = defineStore('documents', {
       this.error = '';
 
       try {
-        const [stats, list] = await Promise.all([
-          documentApi.getStats(),
-          documentApi.getList(this.query)
-        ]);
-
-        this.stats = stats;
-        this.items = list.items;
-        this.total = list.total;
-        this.query.page = list.page;
-        this.query.page_size = list.page_size;
-        this.syncSelectionWithList();
+        await this.refreshStatsAndList(this.query);
       } catch (error) {
         this.error = normalizeError(error);
         throw error;
@@ -205,20 +269,7 @@ export const useDocumentStore = defineStore('documents', {
           page: 1
         };
 
-        const [stats, list] = await Promise.all([
-          documentApi.getStats(),
-          documentApi.getList(refreshQuery)
-        ]);
-
-        this.stats = stats;
-        this.items = list.items;
-        this.total = list.total;
-        this.query = {
-          ...refreshQuery,
-          page: list.page,
-          page_size: list.page_size
-        };
-        this.syncSelectionWithList();
+        await this.refreshStatsAndList(refreshQuery);
 
         try {
           this.currentSessionSummary = await documentApi.getCurrentBatchSession(payload.knowledge_base?.trim() || 'default');
@@ -253,20 +304,7 @@ export const useDocumentStore = defineStore('documents', {
           page: 1
         };
 
-        const [stats, list] = await Promise.all([
-          documentApi.getStats(),
-          documentApi.getList(refreshQuery)
-        ]);
-
-        this.stats = stats;
-        this.items = list.items;
-        this.total = list.total;
-        this.query = {
-          ...refreshQuery,
-          page: list.page,
-          page_size: list.page_size
-        };
-        this.syncSelectionWithList();
+        await this.refreshStatsAndList(refreshQuery);
 
         return result;
       } catch (error) {
@@ -295,20 +333,7 @@ export const useDocumentStore = defineStore('documents', {
           page: 1
         };
 
-        const [stats, list] = await Promise.all([
-          documentApi.getStats(),
-          documentApi.getList(refreshQuery)
-        ]);
-
-        this.stats = stats;
-        this.items = list.items;
-        this.total = list.total;
-        this.query = {
-          ...refreshQuery,
-          page: list.page,
-          page_size: list.page_size
-        };
-        this.syncSelectionWithList();
+        await this.refreshStatsAndList(refreshQuery);
 
         return result;
       } catch (error) {
@@ -365,15 +390,11 @@ export const useDocumentStore = defineStore('documents', {
       this.batchSyncPolling = true;
 
       try {
-        let latest = await this.refreshBatchSyncTask(taskId);
-
-        for (let i = 0; i < maxPolls; i += 1) {
-          if (terminalBatchStatus.has(latest.status)) {
-            break;
-          }
-          await wait(intervalMs);
-          latest = await this.refreshBatchSyncTask(taskId);
-        }
+        const latest = await pollUntil(
+          () => this.refreshBatchSyncTask(taskId),
+          (task) => terminalBatchStatus.has(task.status),
+          { intervalMs, maxPolls }
+        );
 
         if (latest.status === 'completed') {
           await this.refresh();
@@ -429,15 +450,11 @@ export const useDocumentStore = defineStore('documents', {
       this.qaGenerationPolling = true;
 
       try {
-        let latest = await this.refreshQaGenerationTask(taskId);
-
-        for (let i = 0; i < maxPolls; i += 1) {
-          if (terminalTaskStatus.has(latest.status.toLowerCase())) {
-            break;
-          }
-          await wait(intervalMs);
-          latest = await this.refreshQaGenerationTask(taskId);
-        }
+        const latest = await pollUntil(
+          () => this.refreshQaGenerationTask(taskId),
+          (task) => terminalTaskStatus.has(task.status.toLowerCase()),
+          { intervalMs, maxPolls }
+        );
 
         if (latest.status.toLowerCase() === 'completed') {
           await this.refresh();
@@ -465,3 +482,4 @@ export const useDocumentStore = defineStore('documents', {
     }
   }
 });
+

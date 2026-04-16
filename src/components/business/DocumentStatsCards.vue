@@ -55,6 +55,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatNumber } from '@/lib/format';
 import type { DocumentStats } from '@/types/domain';
 
 const props = withDefaults(
@@ -69,5 +70,5 @@ const props = withDefaults(
   }
 );
 
-const displayValue = (value: number): string => (props.loading ? '--' : value.toLocaleString());
+const displayValue = (value: number): string => (props.loading ? '--' : formatNumber(value));
 </script>

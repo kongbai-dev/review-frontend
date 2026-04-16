@@ -1,0 +1,297 @@
+openapi: 3.0.3
+info:
+  title: AI TCAD Backend API - Document Details
+  version: "2026-04-15"
+  description: >
+    Contract for document detail query endpoint in backend_api.
+    Source of truth: testagent/backend_api/routers/v1_documents.py.
+servers:
+  - url: /
+tags:
+  - name: v1-document-details
+    description: Document detail query endpoints.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/knowledge/documents/{document_id}/details:
+    get:
+      tags:
+        - v1-document-details
+      summary: Get document details
+      operationId: getDocumentDetails
+      description: Returns full metadata and processing status for a document.
+      x-required-roles:
+        - admin
+        - reviewer
+        - observer
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          description: Document unique ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetailResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /api/v1/knowledge/documents/{document_id}:
+    get:
+      tags:
+        - v1-document-details
+      summary: Get document details (compatible path)
+      operationId: getDocumentById
+      description: Compatible path, response is the same as `/details`.
+      x-required-roles:
+        - admin
+        - reviewer
+        - observer
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          description: Document unique ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentDetailResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: authentication required
+    ForbiddenError:
+      description: Authenticated but permission denied.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: permission denied
+    NotFoundError:
+      description: Document not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            detail: document not found
+  schemas:
+    DocumentDetailResponse:
+      type: object
+      required:
+        - document_id
+        - title
+        - file_name
+        - file_size
+        - knowledge_base
+        - status
+        - fragment_count
+        - qa_count
+        - authors
+        - topics
+        - scenes
+        - sync_attempts
+      properties:
+        document_id:
+          type: string
+        title:
+          type: string
+        file_name:
+          type: string
+        source_path:
+          type: string
+          nullable: true
+        file_type:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          format: int64
+        uploaded_at:
+          type: string
+          format: date-time
+          nullable: true
+        uploaded_by:
+          type: string
+          nullable: true
+        uploaded_by_name:
+          type: string
+          nullable: true
+        knowledge_base:
+          type: string
+        status:
+          type: string
+        fragment_count:
+          type: integer
+          format: int32
+        qa_count:
+          type: integer
+          format: int32
+        document_type:
+          type: string
+          nullable: true
+        authors:
+          type: array
+          items:
+            type: string
+        year:
+          type: integer
+          format: int32
+          nullable: true
+        journal:
+          type: string
+          nullable: true
+        conference:
+          type: string
+          nullable: true
+        publisher:
+          type: string
+          nullable: true
+        volume:
+          type: string
+          nullable: true
+        issue:
+          type: string
+          nullable: true
+        pages:
+          type: string
+          nullable: true
+        doi:
+          type: string
+          nullable: true
+        abstract:
+          type: string
+          nullable: true
+        topics:
+          type: array
+          items:
+            type: string
+        scenes:
+          type: array
+          items:
+            type: string
+        language:
+          type: string
+          nullable: true
+        sync_mode:
+          type: string
+          nullable: true
+        sync_status:
+          type: string
+          nullable: true
+        local_file_path:
+          type: string
+          nullable: true
+        local_csv_path:
+          type: string
+          nullable: true
+        upload_session_id:
+          type: string
+          nullable: true
+        pair_status:
+          type: string
+          nullable: true
+        pair_error:
+          type: string
+          nullable: true
+        csv_file_name:
+          type: string
+          nullable: true
+        file_md5:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error_code:
+          type: string
+          nullable: true
+        last_error_message:
+          type: string
+          nullable: true
+        uploaded_by_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        latest_task_id:
+          type: string
+          nullable: true
+        latest_task_status:
+          type: string
+          nullable: true
+        latest_task_stage:
+          type: string
+          nullable: true
+        latest_task_error_message:
+          type: string
+          nullable: true
+        latest_task_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        sync_attempts:
+          type: integer
+          format: int32
+          default: 0
+        sync_last_error:
+          type: string
+          nullable: true
+        minio_uploaded_at:
+          type: string
+          format: date-time
+          nullable: true
+        qa_status:
+          type: string
+          nullable: true
+        csv_md5:
+          type: string
+          nullable: true
+    ApiError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true

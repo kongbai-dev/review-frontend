@@ -1,4 +1,5 @@
-﻿import { API_CONFIG } from '@/config';
+import { API_CONFIG } from '@/config';
+import { sleep } from '@/lib/async';
 import type { PagedListResponse } from '@/types/api';
 import type {
   BatchSyncSkippedDocument,
@@ -6,6 +7,7 @@ import type {
   BatchSyncTaskStatus,
   BatchUploadRequestPayload,
   BatchUploadResponse,
+  DocumentDetail,
   DocumentListQuery,
   DocumentStats,
   DocumentStatus,
@@ -18,11 +20,6 @@ import type {
   UploadSessionSummary,
   UploadSyncDocumentPayload
 } from '@/types/domain';
-
-const wait = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 
 const mockHttpError = (status: number, detail: string): Error & { status: number; response: { status: number; data: { detail: string } } } => {
   const error = new Error(detail) as Error & { status: number; response: { status: number; data: { detail: string } } };
@@ -446,12 +443,12 @@ export const getMockDocumentsSnapshot = (): KnowledgeDocument[] => mockDocuments
 
 export const mockDocumentApi = {
   async getStats(): Promise<DocumentStats> {
-    await wait(120);
+    await sleep(120);
     return buildStats();
   },
 
   async getList(query: DocumentListQuery): Promise<PagedListResponse<KnowledgeDocument>> {
-    await wait(160);
+    await sleep(160);
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
     const filtered = filterDocuments(query);
@@ -460,7 +457,7 @@ export const mockDocumentApi = {
   },
 
   async uploadSyncDocument(payload: UploadSyncDocumentPayload): Promise<UploadDocumentResult> {
-    await wait(220);
+    await sleep(220);
 
     const fileBase = extractBaseName(payload.file.name);
     const csvBase = extractBaseName(payload.metadata_csv.name);
@@ -518,7 +515,7 @@ export const mockDocumentApi = {
   },
 
   async batchUploadDocFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
-    await wait(220);
+    await sleep(220);
 
     const knowledgeBase = payload.knowledge_base?.trim() || 'default';
     const session = getOrCreateOpenSession(knowledgeBase);
@@ -596,7 +593,7 @@ export const mockDocumentApi = {
   },
 
   async batchUploadCsvFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
-    await wait(220);
+    await sleep(220);
 
     const knowledgeBase = payload.knowledge_base?.trim() || 'default';
     const session = getOrCreateOpenSession(knowledgeBase);
@@ -668,14 +665,14 @@ export const mockDocumentApi = {
   },
 
   async getCurrentBatchSession(knowledgeBase: string): Promise<UploadSessionSummary> {
-    await wait(120);
+    await sleep(120);
     const normalized = knowledgeBase.trim() || 'default';
     const session = findOpenSession(normalized);
     return buildSessionSummary(session, normalized);
   },
 
   async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
-    await wait(150);
+    await sleep(150);
 
     const knowledgeBase = payload.knowledge_base?.trim() || 'default';
     const session = findOpenSession(knowledgeBase);
@@ -750,7 +747,7 @@ export const mockDocumentApi = {
   },
 
   async getBatchSyncTask(taskId: string): Promise<BatchSyncTaskStatus> {
-    await wait(110);
+    await sleep(110);
     const task = batchSyncTasks.get(taskId);
     if (!task) {
       throw mockHttpError(404, 'batch sync task not found');
@@ -811,7 +808,7 @@ export const mockDocumentApi = {
   },
 
   async startQaGeneration(payload: QAGenerationPayload): Promise<QAGenerationStartResult> {
-    await wait(180);
+    await sleep(180);
     const targetCount = payload.target_count ?? 10;
     if (targetCount < 1 || targetCount > 100) {
       throw mockHttpError(422, 'target_count must be between 1 and 100');
@@ -865,7 +862,7 @@ export const mockDocumentApi = {
   },
 
   async getQaGenerationTask(taskId: string): Promise<IngestionTaskStatus> {
-    await wait(100);
+    await sleep(100);
     const task = qaGenerationTasks.get(taskId);
     if (!task) {
       throw mockHttpError(404, 'qa generation task not found');
@@ -874,7 +871,7 @@ export const mockDocumentApi = {
   },
 
   async getDownloadUrl(documentId: string): Promise<string> {
-    await wait(100);
+    await sleep(100);
     const target = mockDocuments.find((item) => item.document_id === documentId);
     if (!target) {
       throw mockHttpError(404, 'document not found');
@@ -890,17 +887,52 @@ export const mockDocumentApi = {
     return `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
   },
 
-  async getDetail(documentId: string): Promise<KnowledgeDocument> {
-    await wait(100);
+  async getDetail(documentId: string): Promise<DocumentDetail> {
+    await sleep(100);
     const target = mockDocuments.find((item) => item.document_id === documentId);
     if (!target) {
       throw mockHttpError(404, 'document not found');
     }
-    return { ...target };
+    const isFailed = target.status === 'failed';
+    const objectKey = target.object_key || `raw-docs/${target.knowledge_base || 'default'}/${target.file_name}`;
+
+    return {
+      ...target,
+      source_path: target.local_file_path || `knowledge_data/docs/${target.file_name}`,
+      authors: ['Mock Author'],
+      year: 2026,
+      journal: undefined,
+      conference: undefined,
+      publisher: undefined,
+      volume: undefined,
+      issue: undefined,
+      pages: undefined,
+      doi: undefined,
+      abstract: undefined,
+      topics: [target.document_type || 'general'],
+      scenes: ['engineer'],
+      language: 'zh',
+      indexed_at: target.status === 'indexed' ? target.uploaded_at : undefined,
+      last_error_code: isFailed ? 'MOCK_SYNC_FAILED' : undefined,
+      last_error_message: isFailed ? 'mock pipeline failed' : undefined,
+      uploaded_by_user_id: 1,
+      latest_task_id: `task_${target.document_id}`,
+      latest_task_status: target.latest_task_status || (isFailed ? 'failed' : 'completed'),
+      latest_task_stage: isFailed ? 'sync_failed' : 'synced',
+      latest_task_error_message: isFailed ? 'mock pipeline failed' : undefined,
+      latest_task_updated_at: target.uploaded_at,
+      sync_attempts: isFailed ? 2 : 0,
+      sync_last_error: isFailed ? 'mock sync retry exhausted' : '',
+      minio_uploaded_at: target.uploaded_at,
+      qa_status: target.qa_count > 0 ? 'qa_ready' : 'qa_pending',
+      csv_md5: target.csv_file_name ? `csv-md5-${target.document_id}` : undefined,
+      object_key: objectKey,
+      file_md5: target.file_md5 || `file-md5-${target.document_id}`
+    };
   },
 
   async remove(documentId: string): Promise<void> {
-    await wait(100);
+    await sleep(100);
     const target = mockDocuments.find((item) => item.document_id === documentId);
     mockDocuments = mockDocuments.filter((item) => item.document_id !== documentId);
 
@@ -913,3 +945,4 @@ export const mockDocumentApi = {
     }
   }
 };
+

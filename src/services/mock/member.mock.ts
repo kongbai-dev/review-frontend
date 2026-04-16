@@ -1,11 +1,7 @@
-﻿import type { PagedListResponse } from '@/types/api';
+import type { PagedListResponse } from '@/types/api';
 import type { MemberRankingItem, MemberRankingQuery } from '@/types/domain';
 import { getMockDocumentsSnapshot } from '@/services/mock/document.mock';
-
-const wait = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+import { sleep } from '@/lib/async';
 
 const memberSeeds = [
   { user_id: 'u_001', username: 'alice', display_name: 'Alice', reviewed_qa_count: 220, deprecated_qa_count: 8, last_active_at: '2026-03-27T09:15:00Z' },
@@ -75,7 +71,7 @@ const buildItems = (): MemberRankingItem[] => {
 
 export const mockMemberApi = {
   async getRankings(query: MemberRankingQuery): Promise<PagedListResponse<MemberRankingItem>> {
-    await wait(140);
+    await sleep(140);
 
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
@@ -90,3 +86,4 @@ export const mockMemberApi = {
     };
   }
 };
+

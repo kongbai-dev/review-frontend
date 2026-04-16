@@ -1,44 +1,19 @@
-﻿import { isAxiosError } from 'axios';
+import { isAxiosError } from 'axios';
 import { API_CONFIG } from '@/config';
+import { expectNumber, expectOptionalString, expectString, expectStringArray, isObject } from '@/lib/contract';
 import { http } from '@/services/http';
-import { mockQaApi } from '@/services/mock/review.mock';
 import type { ListResponse } from '@/types/api';
 import type { AssignPayload, CreateQAPayload, Fragment, QADetail, QAPair, QAStats, QAStatus, ReviewPayload } from '@/types/domain';
 
 const DEFAULT_LIMIT = 20;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+let qaMockApiPromise: Promise<typeof import('@/services/mock/review.mock').mockQaApi> | null = null;
 
-const expectString = (value: unknown, path: string): string => {
-  if (typeof value !== 'string') {
-    throw new Error(`Contract mismatch: ${path} must be string`);
+const getQaMockApi = async (): Promise<typeof import('@/services/mock/review.mock').mockQaApi> => {
+  if (!qaMockApiPromise) {
+    qaMockApiPromise = import('@/services/mock/review.mock').then((module) => module.mockQaApi);
   }
-  return value;
-};
-
-const expectOptionalString = (value: unknown): string | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== 'string') {
-    throw new Error('Contract mismatch: optional field must be string');
-  }
-  return value;
-};
-
-const expectNumber = (value: unknown, path: string): number => {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`Contract mismatch: ${path} must be number`);
-  }
-  return value;
-};
-
-const expectStringArray = (value: unknown, path: string): string[] => {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new Error(`Contract mismatch: ${path} must be string[]`);
-  }
-  return value;
+  return qaMockApiPromise;
 };
 
 const expectStatus = (value: unknown, path: string): QAStatus => {
@@ -74,7 +49,7 @@ const parseFragment = (raw: unknown, index: number): Fragment => {
     content: expectString(raw.content, `fragments[${index}].content`),
     page_start: raw.page_start === undefined || raw.page_start === null ? undefined : expectNumber(raw.page_start, `fragments[${index}].page_start`),
     page_end: raw.page_end === undefined || raw.page_end === null ? undefined : expectNumber(raw.page_end, `fragments[${index}].page_end`),
-    source: expectOptionalString(raw.source)
+    source: expectOptionalString(raw.source, `fragments[${index}].source`)
   };
 };
 
@@ -83,8 +58,8 @@ const parseQAPair = (raw: unknown, path = 'item'): QAPair => {
     throw new Error(`Contract mismatch: ${path} must be object`);
   }
 
-  const assignee = expectOptionalString(raw.assignee);
-  const reviewer = expectOptionalString(raw.reviewer);
+  const assignee = expectOptionalString(raw.assignee, `${path}.assignee`);
+  const reviewer = expectOptionalString(raw.reviewer, `${path}.reviewer`);
 
   return {
     id: extractId(raw, path),
@@ -96,8 +71,8 @@ const parseQAPair = (raw: unknown, path = 'item'): QAPair => {
     status: expectStatus(raw.status, `${path}.status`),
     assignee,
     reviewer: assignee ?? reviewer,
-    reviewed_at: expectOptionalString(raw.reviewed_at),
-    review_notes: expectOptionalString(raw.review_notes),
+    reviewed_at: expectOptionalString(raw.reviewed_at, `${path}.reviewed_at`),
+    review_notes: expectOptionalString(raw.review_notes, `${path}.review_notes`),
     version: raw.version === undefined || raw.version === null ? 1 : expectNumber(raw.version, `${path}.version`)
   };
 };
@@ -197,6 +172,7 @@ const parseHistory = (reviewed: QAPair[], deprecated: QAPair[], limit: number): 
 export const qaApi = {
   async getPending(limit = DEFAULT_LIMIT): Promise<QAPair[]> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.getPending(limit);
     }
 
@@ -213,6 +189,7 @@ export const qaApi = {
 
   async getDetail(id: string): Promise<QADetail> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.getDetail(id);
     }
 
@@ -222,6 +199,7 @@ export const qaApi = {
 
   async review(id: string, payload: ReviewPayload): Promise<QADetail> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.review(id, payload);
     }
 
@@ -239,6 +217,7 @@ export const qaApi = {
 
   async assign(payload: AssignPayload): Promise<void> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       await mockQaApi.assign(payload);
       return;
     }
@@ -248,6 +227,7 @@ export const qaApi = {
 
   async stats(): Promise<QAStats> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.stats();
     }
 
@@ -257,6 +237,7 @@ export const qaApi = {
 
   async history(limit = DEFAULT_LIMIT): Promise<QAPair[]> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.history(limit);
     }
 
@@ -270,6 +251,7 @@ export const qaApi = {
 
   async create(payload: CreateQAPayload): Promise<QADetail> {
     if (API_CONFIG.USE_MOCK) {
+      const mockQaApi = await getQaMockApi();
       return mockQaApi.create(payload);
     }
 

@@ -1,4 +1,5 @@
 import type { AssignPayload, CreateQAPayload, QADetail, QAPair, QAStats, ReviewPayload } from '@/types/domain';
+import { sleep } from '@/lib/async';
 
 const queue: QADetail[] = [
   {
@@ -69,11 +70,6 @@ const queue: QADetail[] = [
 const reviewed: QADetail[] = [];
 let manualSeed = 1000;
 
-const wait = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-
 const nextQaId = (): string => {
   manualSeed += 1;
   return `qa-manual-${manualSeed}`;
@@ -83,12 +79,12 @@ const nextFragmentId = (qaId: string, index: number): string => `${qaId}-frag-${
 
 export const mockQaApi = {
   async getPending(limit: number): Promise<QAPair[]> {
-    await wait(200);
+    await sleep(200);
     return queue.filter((item) => item.status === 'pending').slice(0, limit);
   },
 
   async getDetail(id: string): Promise<QADetail> {
-    await wait(150);
+    await sleep(150);
     const target = [...queue, ...reviewed].find((item) => item.id === id);
     if (!target) {
       throw new Error('QA not found');
@@ -97,7 +93,7 @@ export const mockQaApi = {
   },
 
   async review(id: string, payload: ReviewPayload): Promise<QADetail> {
-    await wait(200);
+    await sleep(200);
     const index = queue.findIndex((item) => item.id === id);
     if (index < 0) {
       throw new Error('QA not found');
@@ -126,7 +122,7 @@ export const mockQaApi = {
   },
 
   async assign(payload: AssignPayload): Promise<void> {
-    await wait(120);
+    await sleep(120);
     payload.qa_ids.forEach((id) => {
       const target = queue.find((item) => item.id === id);
       if (!target) return;
@@ -136,7 +132,7 @@ export const mockQaApi = {
   },
 
   async stats(): Promise<QAStats> {
-    await wait(120);
+    await sleep(120);
     return {
       pending: queue.filter((item) => item.status === 'pending').length,
       reviewed: reviewed.filter((item) => item.status === 'reviewed').length,
@@ -145,12 +141,12 @@ export const mockQaApi = {
   },
 
   async history(limit: number): Promise<QAPair[]> {
-    await wait(120);
+    await sleep(120);
     return reviewed.slice(0, limit);
   },
 
   async create(payload: CreateQAPayload): Promise<QADetail> {
-    await wait(180);
+    await sleep(180);
 
     const qaId = nextQaId();
     const next: QADetail = {
@@ -178,3 +174,4 @@ export const mockQaApi = {
     return next;
   }
 };
+
