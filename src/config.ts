@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'reviewer' | 'observer';
+﻿export type UserRole = 'admin' | 'reviewer' | 'observer';
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
   if (value === undefined) return fallback;
@@ -35,4 +35,13 @@ export const API_CONFIG = {
     QA_ASSIGNMENTS: '/qa-pairs/assignments',
     QA_CREATE: import.meta.env.VITE_QA_CREATE_ENDPOINT || ''
   }
+} as const;
+
+export const DOCUMENT_BATCH_SYNC_CONFIG = {
+  min_batch_size: 1,
+  max_wait_seconds: 300,
+  max_docs: 200,
+  max_workers: 8,
+  include_failed: true,
+  strict_pairing: false
 } as const;

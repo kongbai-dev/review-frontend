@@ -157,7 +157,8 @@ let mockDocuments: KnowledgeDocument[] = seedDocuments.map((item, index) => ({
   ...item,
   sync_mode: 'sync',
   sync_status: item.status === 'failed' ? 'sync_failed' : 'synced',
-  pair_status: 'paired'
+  pair_status: 'paired',
+  object_key: `raw-docs/${item.knowledge_base}/${item.file_name}`
 }));
 
 const openSessionsByKnowledgeBase = new Map<string, MockUploadSession>();
@@ -266,6 +267,9 @@ const extractBaseName = (name: string): string => {
   const dot = name.lastIndexOf('.');
   return dot > 0 ? name.slice(0, dot).toLowerCase() : name.toLowerCase();
 };
+
+const buildObjectKey = (knowledgeBase: string, fileName: string): string =>
+  `raw-docs/${knowledgeBase.trim() || 'default'}/${fileName}`;
 
 const nextDocumentId = (): string => `doc_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const nextTaskId = (): string => `task_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -492,22 +496,24 @@ export const mockDocumentApi = {
       sync_status: 'synced',
       pair_status: 'paired',
       csv_file_name: payload.metadata_csv.name,
+      object_key: buildObjectKey(knowledgeBase, payload.file.name),
       local_file_path: `knowledge_data/${payload.subdir?.trim() ? `${payload.subdir.trim()}/` : ''}${payload.file.name}`,
       local_csv_path: `knowledge_data/${payload.subdir?.trim() ? `${payload.subdir.trim()}/` : ''}${payload.metadata_csv.name}`
     };
 
     mockDocuments = [nextDocument, ...mockDocuments];
 
-    return {
-      document_id: nextDocument.document_id,
-      title: nextDocument.title,
-      file_name: nextDocument.file_name,
-      document_type: documentType,
-      knowledge_base: nextDocument.knowledge_base,
-      status: 'synced',
-      fragment_count: 0,
-      generated_pending_qas: 0,
-      ingestion_task_id: nextTaskId(),
+      return {
+        document_id: nextDocument.document_id,
+        title: nextDocument.title,
+        file_name: nextDocument.file_name,
+        document_type: documentType,
+        knowledge_base: nextDocument.knowledge_base,
+        object_key: nextDocument.object_key,
+        status: 'synced',
+        fragment_count: 0,
+        generated_pending_qas: 0,
+        ingestion_task_id: nextTaskId(),
       sync_mode: 'sync',
       sync_status: 'synced'
     };
@@ -563,6 +569,7 @@ export const mockDocumentApi = {
         upload_session_id: session.session_id,
         pair_status: 'missing_csv',
         pair_error: 'metadata csv not found',
+        object_key: buildObjectKey(knowledgeBase, file.name),
         local_file_path: `knowledge_data/docs/${session.session_id}/${file.name}`
       };
 

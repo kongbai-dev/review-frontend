@@ -326,6 +326,25 @@ const extractBaseName = (name: string): string => {
   return dot > 0 ? name.slice(0, dot) : name;
 };
 
+const CSV_NAME_SUFFIX_PATTERN = /_csv$/i;
+
+const normalizeCsvFileForUpload = (csvFile: File): File => {
+  const fileName = csvFile.name;
+  const dot = fileName.lastIndexOf('.');
+  const ext = dot > -1 ? fileName.slice(dot) : '';
+  const baseName = dot > -1 ? fileName.slice(0, dot) : fileName;
+  const normalizedBaseName = baseName.replace(CSV_NAME_SUFFIX_PATTERN, '');
+
+  if (!normalizedBaseName || normalizedBaseName === baseName) {
+    return csvFile;
+  }
+
+  return new File([csvFile], `${normalizedBaseName}${ext}`, {
+    type: csvFile.type,
+    lastModified: csvFile.lastModified
+  });
+};
+
 const isValidSubdir = (value: string): boolean => {
   if (!value.trim()) return true;
   if (value.startsWith('/')) return false;
@@ -392,8 +411,10 @@ const handleSyncUpload = async (): Promise<void> => {
     return;
   }
 
-  if (extractBaseName(syncDocument.value.name) !== extractBaseName(syncCsv.value.name)) {
-    localError.value = '文档与 CSV 必须同名（示例：a.pdf + a.csv）';
+  const normalizedSyncCsv = normalizeCsvFileForUpload(syncCsv.value);
+
+  if (extractBaseName(syncDocument.value.name) !== extractBaseName(normalizedSyncCsv.name)) {
+    localError.value = '文档与 CSV（去掉末尾 _csv 后）必须同名（示例：a.pdf + a_csv.csv）';
     return;
   }
 
@@ -404,7 +425,7 @@ const handleSyncUpload = async (): Promise<void> => {
 
   await documentStore.uploadSyncPair({
     file: syncDocument.value,
-    metadata_csv: syncCsv.value,
+    metadata_csv: normalizedSyncCsv,
     knowledge_base: normalizedKnowledgeBase.value,
     document_type: syncForm.document_type || undefined,
     title: syncForm.title.trim() || undefined,
@@ -447,8 +468,10 @@ const handleBatchCsvUpload = async (): Promise<void> => {
     return;
   }
 
+  const normalizedCsvFiles = batchCsvFiles.value.map((file) => normalizeCsvFileForUpload(file));
+
   await documentStore.batchUploadCsvs({
-    files: batchCsvFiles.value,
+    files: normalizedCsvFiles,
     knowledge_base: normalizedKnowledgeBase.value
   });
 
