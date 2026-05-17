@@ -64,7 +64,7 @@ const expectOptionalUploadMode = (value: unknown, path: string): UploadMode | un
     return undefined;
   }
   const mode = expectString(value, path);
-  if (mode === 'sync' || mode === 'batch') {
+  if (mode === 'sync' || mode === 'batch' || mode === 'batch_direct') {
     return mode;
   }
   return undefined;
@@ -194,10 +194,7 @@ const parseBatchUploadResponse = (raw: unknown, path = 'batchUpload'): BatchUplo
     throw new Error(`Contract mismatch: ${path} response must be object`);
   }
 
-  const itemsRaw = raw.items;
-  if (!Array.isArray(itemsRaw)) {
-    throw new Error(`Contract mismatch: ${path}.items must be array`);
-  }
+  const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
 
   return {
     session_id: expectString(raw.session_id, `${path}.session_id`),
@@ -228,12 +225,8 @@ const parseUploadSessionSummary = (raw: unknown): UploadSessionSummary => {
     throw new Error('Contract mismatch: upload session summary response must be object');
   }
 
-  const unmatchedRaw = raw.unmatched_documents;
-  const orphanRaw = raw.orphan_csv_files;
-
-  if (!Array.isArray(unmatchedRaw) || !Array.isArray(orphanRaw)) {
-    throw new Error('Contract mismatch: unmatched_documents/orphan_csv_files must be array');
-  }
+  const unmatchedRaw = Array.isArray(raw.unmatched_documents) ? raw.unmatched_documents : [];
+  const orphanRaw = Array.isArray(raw.orphan_csv_files) ? raw.orphan_csv_files : [];
 
   return {
     session_id: expectOptionalString(raw.session_id, 'session.session_id'),
@@ -303,26 +296,34 @@ const parseQAGenerationResult = (raw: unknown): QAGenerationStartResult => {
   };
 };
 
-const parseIngestionTaskStatus = (raw: unknown): IngestionTaskStatus => {
+const parseIngestionTaskStatus = (raw: unknown, fallbackTaskId = ''): IngestionTaskStatus => {
   if (!isObject(raw)) {
     throw new Error('Contract mismatch: ingestion task status response must be object');
   }
 
+  const getString = (...candidates: unknown[]): string | undefined =>
+    candidates.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  const status = getString(raw.status);
+  if (!status) {
+    throw new Error('Contract mismatch: ingestion task status missing status');
+  }
+
   return {
-    id: expectString(raw.id, 'ingestionTask.id'),
-    document_id: expectString(raw.document_id, 'ingestionTask.document_id'),
-    task_type: expectString(raw.task_type, 'ingestionTask.task_type'),
-    status: expectString(raw.status, 'ingestionTask.status'),
-    stage: expectString(raw.stage, 'ingestionTask.stage'),
+    id: getString(raw.id, raw.task_id, raw.ingestion_task_id, fallbackTaskId) ?? fallbackTaskId,
+    document_id: getString(raw.document_id) ?? '',
+    task_type: getString(raw.task_type) ?? 'qa_generation',
+    status,
+    stage: getString(raw.stage) ?? '',
     created_by_user_id: expectOptionalNumber(raw.created_by_user_id, 'ingestionTask.created_by_user_id'),
-    total_fragments: expectNumber(raw.total_fragments, 'ingestionTask.total_fragments'),
-    total_generated_qas: expectNumber(raw.total_generated_qas, 'ingestionTask.total_generated_qas'),
-    retry_count: expectNumber(raw.retry_count, 'ingestionTask.retry_count'),
+    total_fragments: expectOptionalNumber(raw.total_fragments, 'ingestionTask.total_fragments') ?? 0,
+    total_generated_qas: expectOptionalNumber(raw.total_generated_qas, 'ingestionTask.total_generated_qas') ?? 0,
+    retry_count: expectOptionalNumber(raw.retry_count, 'ingestionTask.retry_count') ?? 0,
     error_message: expectOptionalString(raw.error_message, 'ingestionTask.error_message'),
-    started_at: expectString(raw.started_at, 'ingestionTask.started_at'),
+    started_at: getString(raw.started_at) ?? '',
     finished_at: expectOptionalString(raw.finished_at, 'ingestionTask.finished_at'),
-    created_at: expectString(raw.created_at, 'ingestionTask.created_at'),
-    updated_at: expectString(raw.updated_at, 'ingestionTask.updated_at')
+    created_at: getString(raw.created_at) ?? '',
+    updated_at: getString(raw.updated_at) ?? ''
   };
 };
 
@@ -335,7 +336,7 @@ const parseDownloadUrl = (raw: unknown): string => {
     throw new Error('Contract mismatch: download response must be string or object');
   }
 
-  const candidates = [raw.download_url, raw.url, raw.signed_url];
+  const candidates = [raw.download_url, raw.url, raw.signed_url, ...Object.values(raw)];
   const url = candidates.find((value) => typeof value === 'string');
   if (!url || typeof url !== 'string') {
     throw new Error('Contract mismatch: download response missing download_url');
@@ -406,9 +407,13 @@ export const documentApi = {
 
     const formData = new FormData();
     formData.append('file', payload.file);
-    formData.append('metadata_csv', payload.metadata_csv);
+    formData.append('metadata_mode', payload.metadata_mode ?? 'auto');
     formData.append('upload_mode', 'sync');
     formData.append('knowledge_base', payload.knowledge_base?.trim() || 'default');
+
+    if (payload.metadata_csv) {
+      formData.append('metadata_csv', payload.metadata_csv);
+    }
 
     if (payload.title?.trim()) {
       formData.append('title', payload.title.trim());
@@ -416,10 +421,6 @@ export const documentApi = {
 
     if (payload.document_type) {
       formData.append('document_type', payload.document_type);
-    }
-
-    if (payload.subdir?.trim()) {
-      formData.append('subdir', payload.subdir.trim());
     }
 
     const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_UPLOAD, formData, {
@@ -450,6 +451,27 @@ export const documentApi = {
     });
 
     return parseBatchUploadResponse(response.data, 'batchUploadDocs');
+  },
+
+  async batchUploadDirectDocFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+    if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
+      return mockDocumentApi.batchUploadDirectDocFiles(payload);
+    }
+
+    const formData = new FormData();
+    payload.files.forEach((file) => {
+      formData.append('files', file);
+    });
+    formData.append('knowledge_base', payload.knowledge_base?.trim() || 'default');
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_UPLOAD_DIRECT_DOC_FILES, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+
+    return parseBatchUploadResponse(response.data, 'batchUploadDirectDocs');
   },
 
   async batchUploadCsvFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
@@ -488,6 +510,21 @@ export const documentApi = {
     return parseUploadSessionSummary(response.data);
   },
 
+  async getCurrentDirectBatchSession(knowledgeBase = 'default'): Promise<UploadSessionSummary> {
+    if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
+      return mockDocumentApi.getCurrentDirectBatchSession(knowledgeBase);
+    }
+
+    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_UPLOAD_DIRECT_SESSION_CURRENT, {
+      params: {
+        knowledge_base: knowledgeBase
+      }
+    });
+
+    return parseUploadSessionSummary(response.data);
+  },
+
   async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
     if (API_CONFIG.USE_MOCK) {
       const mockDocumentApi = await getDocumentMockApi();
@@ -496,6 +533,16 @@ export const documentApi = {
 
     const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_SYNC_START, payload);
     return parseBatchSyncTask(response.data, 'batchSyncStart');
+  },
+
+  async startDirectBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
+    if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
+      return mockDocumentApi.startDirectBatchSync(payload);
+    }
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_BATCH_SYNC_DIRECT_START, payload);
+    return parseBatchSyncTask(response.data, 'batchDirectSyncStart');
   },
 
   async getBatchSyncTask(taskId: string): Promise<BatchSyncTaskStatus> {
@@ -531,7 +578,7 @@ export const documentApi = {
     }
 
     const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_TASK(taskId));
-    return parseIngestionTaskStatus(response.data);
+    return parseIngestionTaskStatus(response.data, taskId);
   },
 
   async getDownloadUrl(documentId: string): Promise<string> {
@@ -541,11 +588,12 @@ export const documentApi = {
     }
 
     try {
-      const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_DOWNLOAD(documentId));
+      const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_DOWNLOAD_URL(documentId));
       return parseDownloadUrl(response.data);
     } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 501) {
-        throw new Error('Backend has not implemented document download endpoint yet (501).');
+      if (isAxiosError(error) && [404, 405, 501].includes(error.response?.status ?? 0)) {
+        const legacyResponse = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_DOWNLOAD(documentId));
+        return parseDownloadUrl(legacyResponse.data);
       }
       throw error;
     }

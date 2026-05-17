@@ -18,12 +18,16 @@
         <label class="block text-sm">
           问题
           <textarea v-model="form.question" data-testid="review-question" rows="3" class="form-control mt-1" />
+          <p class="text-muted mt-1 text-xs">支持 Markdown 和 LaTeX（行内：`$...$`，块级：`$$...$$`）</p>
         </label>
+        <MarkdownPreview :content="form.question" empty-text="问题预览为空" />
 
         <label class="block text-sm">
           答案
           <textarea v-model="form.answer" data-testid="review-answer" rows="6" class="form-control mt-1" />
+          <p class="text-muted mt-1 text-xs">支持 Markdown 和 LaTeX（行内：`$...$`，块级：`$$...$$`）</p>
         </label>
+        <MarkdownPreview :content="form.answer" empty-text="答案预览为空" />
 
         <label class="block text-sm">
           主题（逗号分隔）
@@ -74,6 +78,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import MarkdownPreview from '@/components/business/MarkdownPreview.vue';
 import { useQAStore } from '@/stores/qa.store';
 import type { ReviewPayload } from '@/types/domain';
 import { formatDateTime } from '@/lib/format';

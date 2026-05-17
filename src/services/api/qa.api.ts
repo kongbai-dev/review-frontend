@@ -60,13 +60,15 @@ const parseQAPair = (raw: unknown, path = 'item'): QAPair => {
 
   const assignee = expectOptionalString(raw.assignee, `${path}.assignee`);
   const reviewer = expectOptionalString(raw.reviewer, `${path}.reviewer`);
+  const topics = Array.isArray(raw.topics) ? expectStringArray(raw.topics, `${path}.topics`) : [];
+  const scenes = Array.isArray(raw.scenes) ? expectStringArray(raw.scenes, `${path}.scenes`) : [];
 
   return {
     id: extractId(raw, path),
     question: expectString(raw.question, `${path}.question`),
     answer: expectString(raw.answer, `${path}.answer`),
-    topics: expectStringArray(raw.topics, `${path}.topics`),
-    scenes: expectStringArray(raw.scenes, `${path}.scenes`),
+    topics,
+    scenes,
     confidence: expectNumber(raw.confidence, `${path}.confidence`),
     status: expectStatus(raw.status, `${path}.status`),
     assignee,
@@ -97,13 +99,13 @@ const parseListResponse = (raw: unknown, endpoint: string, itemPath: string): Li
 
 const parseDetailResponse = (raw: unknown): QADetail => {
   const qa = parseQAPair(raw, 'detail');
-  if (!isObject(raw) || !Array.isArray(raw.fragments)) {
-    throw new Error('Contract mismatch: detail.fragments must be array');
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: detail must be object');
   }
 
   return {
     ...qa,
-    fragments: raw.fragments.map((item, index) => parseFragment(item, index))
+    fragments: Array.isArray(raw.fragments) ? raw.fragments.map((item, index) => parseFragment(item, index)) : []
   };
 };
 

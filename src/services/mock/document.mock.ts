@@ -9,6 +9,7 @@ import type {
   BatchUploadResponse,
   DocumentListQuery,
   DocumentStats,
+  MetadataMode,
   DocumentStatus,
   DocumentType,
   IngestionTaskStatus,
@@ -147,6 +148,15 @@ interface MockUploadSession {
   updated_at: string;
 }
 
+interface MockDirectUploadSession {
+  session_id: string;
+  status: 'open' | 'closed';
+  knowledge_base: string;
+  document_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 interface InternalBatchTask extends BatchSyncTaskStatus {
   candidate_ids: string[];
   tick: number;
@@ -162,6 +172,7 @@ let mockDocuments: KnowledgeDocument[] = seedDocuments.map((item, index) => ({
 }));
 
 const openSessionsByKnowledgeBase = new Map<string, MockUploadSession>();
+const openDirectSessionsByKnowledgeBase = new Map<string, MockDirectUploadSession>();
 const batchSyncTasks = new Map<string, InternalBatchTask>();
 const qaGenerationTasks = new Map<string, IngestionTaskStatus>();
 
@@ -306,9 +317,35 @@ const getOrCreateOpenSession = (knowledgeBase: string): MockUploadSession => {
   return session;
 };
 
+const getOrCreateOpenDirectSession = (knowledgeBase: string): MockDirectUploadSession => {
+  const normalized = knowledgeBase.trim() || 'default';
+  const existing = openDirectSessionsByKnowledgeBase.get(normalized);
+  if (existing) {
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const session: MockDirectUploadSession = {
+    session_id: nextSessionId(),
+    status: 'open',
+    knowledge_base: normalized,
+    document_ids: [],
+    created_at: now,
+    updated_at: now
+  };
+
+  openDirectSessionsByKnowledgeBase.set(normalized, session);
+  return session;
+};
+
 const findOpenSession = (knowledgeBase: string): MockUploadSession | undefined => {
   const normalized = knowledgeBase.trim() || 'default';
   return openSessionsByKnowledgeBase.get(normalized);
+};
+
+const findOpenDirectSession = (knowledgeBase: string): MockDirectUploadSession | undefined => {
+  const normalized = knowledgeBase.trim() || 'default';
+  return openDirectSessionsByKnowledgeBase.get(normalized);
 };
 
 const recomputePairing = (session: MockUploadSession): void => {
@@ -418,6 +455,37 @@ const buildSessionSummary = (session: MockUploadSession | undefined, knowledgeBa
   };
 };
 
+const buildDirectSessionSummary = (session: MockDirectUploadSession | undefined, knowledgeBase: string): UploadSessionSummary => {
+  if (!session) {
+    return {
+      knowledge_base: knowledgeBase,
+      doc_file_count: 0,
+      csv_file_count: 0,
+      paired_count: 0,
+      unpaired_count: 0,
+      unmatched_documents: [],
+      orphan_csv_files: []
+    };
+  }
+
+  session.document_ids = session.document_ids.filter((documentId) =>
+    mockDocuments.some((item) => item.document_id === documentId)
+  );
+  session.updated_at = new Date().toISOString();
+
+  return {
+    session_id: session.session_id,
+    status: session.status,
+    knowledge_base: session.knowledge_base,
+    doc_file_count: session.document_ids.length,
+    csv_file_count: 0,
+    paired_count: session.document_ids.length,
+    unpaired_count: 0,
+    unmatched_documents: [],
+    orphan_csv_files: []
+  };
+};
+
 const cloneBatchTask = (task: InternalBatchTask): BatchSyncTaskStatus => ({
   task_id: task.task_id,
   status: task.status,
@@ -462,13 +530,16 @@ export const mockDocumentApi = {
   async uploadSyncDocument(payload: UploadSyncDocumentPayload): Promise<UploadDocumentResult> {
     await sleep(220);
 
-    const fileBase = extractBaseName(payload.file.name);
-    const csvBase = extractBaseName(payload.metadata_csv.name);
-    if (fileBase !== csvBase) {
-      throw mockHttpError(422, 'file and metadata_csv must share same basename');
+    const metadataMode: MetadataMode = payload.metadata_mode ?? 'auto';
+    if (metadataMode === 'csv_required' && !payload.metadata_csv) {
+      throw mockHttpError(422, 'metadata_csv is required when metadata_mode=csv_required');
     }
 
-    if (!payload.metadata_csv.name.toLowerCase().endsWith('.csv')) {
+    if (metadataMode === 'file_only' && payload.metadata_csv) {
+      throw mockHttpError(422, 'metadata_csv is not allowed when metadata_mode=file_only');
+    }
+
+    if (payload.metadata_csv && !payload.metadata_csv.name.toLowerCase().endsWith('.csv')) {
       throw mockHttpError(422, 'metadata_csv must be a csv file');
     }
 
@@ -479,9 +550,10 @@ export const mockDocumentApi = {
     }
 
     const documentType = asDocumentType(payload.document_type);
+    const generatedCsvFileName = payload.metadata_csv?.name ?? `${extractBaseName(payload.file.name)}.auto.generated.csv`;
     const nextDocument: KnowledgeDocument = {
       document_id: nextDocumentId(),
-      title: payload.title?.trim() || fileBase,
+      title: payload.title?.trim() || extractBaseName(payload.file.name),
       file_name: payload.file.name,
       file_type: inferFileType(payload.file.name),
       file_size: payload.file.size,
@@ -494,11 +566,11 @@ export const mockDocumentApi = {
       document_type: documentType,
       sync_mode: 'sync',
       sync_status: 'synced',
-      pair_status: 'paired',
-      csv_file_name: payload.metadata_csv.name,
+      pair_status: payload.metadata_csv ? 'paired' : 'file_only',
+      csv_file_name: generatedCsvFileName,
       object_key: buildObjectKey(knowledgeBase, payload.file.name),
-      local_file_path: `knowledge_data/${payload.subdir?.trim() ? `${payload.subdir.trim()}/` : ''}${payload.file.name}`,
-      local_csv_path: `knowledge_data/${payload.subdir?.trim() ? `${payload.subdir.trim()}/` : ''}${payload.metadata_csv.name}`
+      local_file_path: `knowledge_data/docs/sync/${payload.file.name}`,
+      local_csv_path: `knowledge_data/csv/sync/${generatedCsvFileName}`
     };
 
     mockDocuments = [nextDocument, ...mockDocuments];
@@ -598,6 +670,88 @@ export const mockDocumentApi = {
     };
   },
 
+  async batchUploadDirectDocFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+    await sleep(220);
+
+    const knowledgeBase = payload.knowledge_base?.trim() || 'default';
+    const session = getOrCreateOpenDirectSession(knowledgeBase);
+
+    const items: BatchUploadResponse['items'] = [];
+    let acceptedCount = 0;
+    let rejectedCount = 0;
+
+    for (const file of payload.files) {
+      const fileType = inferFileType(file.name);
+      if (fileType === 'csv') {
+        items.push({
+          file_name: file.name,
+          status: 'rejected',
+          message: 'direct doc-files endpoint does not accept csv files'
+        });
+        rejectedCount += 1;
+        continue;
+      }
+
+      const exists = mockDocuments.some((item) => item.file_name === file.name && (item.knowledge_base ?? 'default') === knowledgeBase);
+      if (exists) {
+        const existingDocument = mockDocuments.find((item) => item.file_name === file.name && (item.knowledge_base ?? 'default') === knowledgeBase);
+        items.push({
+          file_name: file.name,
+          status: 'duplicate',
+          message: `document already exists: ${existingDocument?.document_id ?? 'unknown'}`,
+          document_id: existingDocument?.document_id
+        });
+        rejectedCount += 1;
+        continue;
+      }
+
+      const nextDocument: KnowledgeDocument = {
+        document_id: nextDocumentId(),
+        title: extractBaseName(file.name),
+        file_name: file.name,
+        file_type: fileType,
+        file_size: file.size,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: getCurrentUsername(),
+        knowledge_base: knowledgeBase,
+        status: 'processing',
+        fragment_count: 0,
+        qa_count: 0,
+        sync_mode: 'batch_direct',
+        sync_status: 'sync_pending',
+        upload_session_id: session.session_id,
+        pair_status: 'file_only',
+        object_key: buildObjectKey(knowledgeBase, file.name),
+        local_file_path: `knowledge_data/docs/${session.session_id}/${file.name}`
+      };
+
+      mockDocuments = [nextDocument, ...mockDocuments];
+      session.document_ids.push(nextDocument.document_id);
+      session.updated_at = new Date().toISOString();
+
+      items.push({
+        file_name: file.name,
+        status: 'stored',
+        message: 'uploaded',
+        document_id: nextDocument.document_id
+      });
+      acceptedCount += 1;
+    }
+
+    const summary = buildDirectSessionSummary(session, knowledgeBase);
+
+    return {
+      session_id: session.session_id,
+      knowledge_base: knowledgeBase,
+      total_files: payload.files.length,
+      accepted_count: acceptedCount,
+      rejected_count: rejectedCount,
+      items,
+      paired_count: summary.paired_count,
+      unpaired_count: summary.unpaired_count
+    };
+  },
+
   async batchUploadCsvFiles(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
     await sleep(220);
 
@@ -677,6 +831,13 @@ export const mockDocumentApi = {
     return buildSessionSummary(session, normalized);
   },
 
+  async getCurrentDirectBatchSession(knowledgeBase: string): Promise<UploadSessionSummary> {
+    await sleep(120);
+    const normalized = knowledgeBase.trim() || 'default';
+    const session = findOpenDirectSession(normalized);
+    return buildDirectSessionSummary(session, normalized);
+  },
+
   async startBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
     await sleep(150);
 
@@ -750,6 +911,69 @@ export const mockDocumentApi = {
 
     batchSyncTasks.set(taskId, task);
     return cloneBatchTask(task);
+  },
+
+  async startDirectBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
+    await sleep(150);
+
+    const knowledgeBase = payload.knowledge_base?.trim() || 'default';
+    const session = findOpenDirectSession(knowledgeBase);
+    if (!session) {
+      throw mockHttpError(404, 'no open file-only upload session found');
+    }
+
+    const summary = buildDirectSessionSummary(session, knowledgeBase);
+    const includeFailed = payload.include_failed ?? true;
+    const maxDocs = payload.max_docs ?? 200;
+    const minBatchSize = payload.min_batch_size ?? 10;
+
+    const docsInSession = session.document_ids
+      .map((documentId) => mockDocuments.find((item) => item.document_id === documentId))
+      .filter((item): item is KnowledgeDocument => Boolean(item));
+
+    const candidates = docsInSession
+      .filter((item) => item.sync_mode === 'batch_direct')
+      .filter((item) => includeFailed || item.status !== 'failed')
+      .slice(0, maxDocs)
+      .map((item) => item.document_id);
+
+    const skippedDocuments: BatchSyncSkippedDocument[] = [];
+    if (!includeFailed) {
+      for (const doc of docsInSession.filter((item) => item.status === 'failed')) {
+        skippedDocuments.push({
+          document_id: doc.document_id,
+          file_name: doc.file_name,
+          reason: 'failed documents are excluded when include_failed=false'
+        });
+      }
+    }
+
+    const taskId = nextTaskId();
+    const now = new Date().toISOString();
+    const task: InternalBatchTask = {
+      task_id: taskId,
+      status: candidates.length < minBatchSize ? 'skipped' : 'queued',
+      session_id: session.session_id,
+      queued_count: candidates.length,
+      processed_count: 0,
+      success_count: 0,
+      failed_count: 0,
+      skipped_count: skippedDocuments.length,
+      message: candidates.length < minBatchSize ? 'skipped: queued count is below min_batch_size' : 'file-only batch sync task started',
+      started_at: candidates.length < minBatchSize ? now : undefined,
+      finished_at: candidates.length < minBatchSize ? now : undefined,
+      failed_documents: [],
+      skipped_documents: skippedDocuments,
+      candidate_ids: candidates,
+      tick: 0
+    };
+
+    batchSyncTasks.set(taskId, task);
+
+    return {
+      ...cloneBatchTask(task),
+      queued_count: summary.doc_file_count > 0 ? task.queued_count : 0
+    };
   },
 
   async getBatchSyncTask(taskId: string): Promise<BatchSyncTaskStatus> {

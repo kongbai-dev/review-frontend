@@ -1,5 +1,6 @@
-﻿<template>
+<template>
   <section class="flex h-[calc(100vh-7.5rem)] min-h-[640px] flex-col gap-3">
+    <KnowledgeSectionTabs />
     <p
       v-if="documentStore.error"
       class="rounded-xl border border-[color:color-mix(in_srgb,var(--color-danger)_24%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,white)] px-3 py-2 text-sm text-[var(--color-danger)]"
@@ -35,9 +36,9 @@
               <button
                 type="button"
                 class="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-primary)_4%,white)]"
-                @click="toggleUploadPanel"
+                @click="openUploadPanel"
               >
-                {{ showUploadPanel ? '收起上传' : '上传工作台' }}
+                上传工作台
               </button>
               <button
                 v-if="canManage"
@@ -147,27 +148,6 @@
 
       <div class="min-h-0 flex-1 overflow-auto bg-[var(--color-bg)]">
         <div class="px-4 pt-4 sm:px-5">
-          <transition
-            enter-active-class="transition duration-150 ease-out"
-            enter-from-class="opacity-0 -translate-y-1"
-            enter-to-class="opacity-100 translate-y-0"
-            leave-active-class="transition duration-100 ease-in"
-            leave-from-class="opacity-100 translate-y-0"
-            leave-to-class="opacity-0 -translate-y-1"
-          >
-            <div
-              v-if="showUploadPanel"
-              class="mb-3 rounded-xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg)_88%,transparent)] p-3"
-            >
-              <DocumentUploadPanel
-                v-model:knowledge-base="workspaceKnowledgeBase"
-                :can-manage="canManage"
-                :error="documentStore.error"
-                @cancel="closeUploadPanel"
-              />
-            </div>
-          </transition>
-
           <div class="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_35%,transparent)] px-3 py-2">
             <span class="text-sm">已选 {{ documentStore.selectedCount }} 项</span>
             <button
@@ -258,14 +238,62 @@
         />
       </div>
     </section>
+
+    <Teleport to="body">
+      <transition
+        enter-active-class="transition duration-180 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-120 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div v-if="showUploadPanel" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+          <button
+            type="button"
+            class="absolute inset-0 bg-[color:color-mix(in_srgb,var(--color-bg)_48%,black)] backdrop-blur-[3px]"
+            aria-label="关闭上传工作台"
+            @click="closeUploadPanel"
+          />
+
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="document-upload-dialog-title"
+            class="relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[0_32px_120px_-48px_var(--color-shadow)] sm:max-h-[calc(100vh-3rem)]"
+            @click.stop
+          >
+            <div class="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-4 sm:px-5">
+              <div class="min-w-0">
+                <h3 id="document-upload-dialog-title" class="text-base font-semibold text-[var(--color-text-primary)]">文档上传工作台</h3>
+                <p class="mt-1 text-sm text-[var(--color-text-secondary)]">上传流程已切换为弹窗模式，上传时不会再把文档表格区域挤出可视范围。</p>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm shrink-0" @click="closeUploadPanel">关闭</button>
+            </div>
+
+            <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+              <DocumentUploadPanel
+                v-model:knowledge-base="workspaceKnowledgeBase"
+                :can-manage="canManage"
+                :error="documentStore.error"
+                :show-header="false"
+                :framed="false"
+                @cancel="closeUploadPanel"
+              />
+            </div>
+          </section>
+        </div>
+      </transition>
+    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import DocumentTable from '@/components/business/DocumentTable.vue';
 import DocumentUploadPanel from '@/components/business/DocumentUploadPanel.vue';
+import KnowledgeSectionTabs from '@/components/business/KnowledgeSectionTabs.vue';
 import { DOCUMENT_BATCH_SYNC_CONFIG } from '@/config';
 import { documentFileTypeOptions, useDocumentFilters } from '@/composables/useDocumentFilters';
 import { useAuthStore } from '@/stores/auth.store';
@@ -324,10 +352,13 @@ const closeUploadPanel = async (): Promise<void> => {
   await clearUploadFlag();
 };
 
-const toggleUploadPanel = async (): Promise<void> => {
-  showUploadPanel.value = !showUploadPanel.value;
-  if (!showUploadPanel.value) {
-    await clearUploadFlag();
+const openUploadPanel = (): void => {
+  showUploadPanel.value = true;
+};
+
+const handleWindowKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape' && showUploadPanel.value) {
+    void closeUploadPanel();
   }
 };
 
@@ -454,8 +485,15 @@ watch(
 );
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleWindowKeydown);
   syncFiltersFromStore(documentStore.query);
   await documentStore.refresh();
   syncFiltersFromStore(documentStore.query);
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleWindowKeydown);
+});
 </script>
+
+

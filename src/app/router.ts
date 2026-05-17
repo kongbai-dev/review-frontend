@@ -40,6 +40,18 @@ const routes = [
         meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
       },
       {
+        path: 'documents/code',
+        name: 'documents-code',
+        component: () => import('@/pages/CodeManagePage.vue'),
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
+      },
+      {
+        path: 'documents/data',
+        name: 'documents-data',
+        component: () => import('@/pages/DatasetManagePage.vue'),
+        meta: { roles: ['admin', 'reviewer', 'observer'] as UserRole[] }
+      },
+      {
         path: 'members',
         name: 'members',
         component: () => import('@/pages/MemberRankingPage.vue'),

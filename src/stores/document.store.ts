@@ -54,8 +54,10 @@ interface DocumentState {
   selectedDocumentIds: string[];
   syncUploadResult: UploadDocumentResult | null;
   batchUploadDocResult: BatchUploadResponse | null;
+  batchUploadDirectDocResult: BatchUploadResponse | null;
   batchUploadCsvResult: BatchUploadResponse | null;
   currentSessionSummary: UploadSessionSummary | null;
+  currentDirectSessionSummary: UploadSessionSummary | null;
   batchSyncTask: BatchSyncTaskStatus | null;
   batchSyncPolling: boolean;
   qaGenerationStartResult: QAGenerationStartResult | null;
@@ -89,8 +91,10 @@ export const useDocumentStore = defineStore('documents', {
     selectedDocumentIds: [],
     syncUploadResult: null,
     batchUploadDocResult: null,
+    batchUploadDirectDocResult: null,
     batchUploadCsvResult: null,
     currentSessionSummary: null,
+    currentDirectSessionSummary: null,
     batchSyncTask: null,
     batchSyncPolling: false,
     qaGenerationStartResult: null,
@@ -133,6 +137,7 @@ export const useDocumentStore = defineStore('documents', {
     clearUploadState(): void {
       this.syncUploadResult = null;
       this.batchUploadDocResult = null;
+      this.batchUploadDirectDocResult = null;
       this.batchUploadCsvResult = null;
     },
 
@@ -255,6 +260,35 @@ export const useDocumentStore = defineStore('documents', {
       }
     },
 
+    async batchUploadDirectDocs(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
+      this.uploading = true;
+      this.error = '';
+
+      try {
+        const knowledgeBase = payload.knowledge_base?.trim() || 'default';
+        const result = await documentApi.batchUploadDirectDocFiles({
+          files: payload.files,
+          knowledge_base: knowledgeBase
+        });
+        this.batchUploadDirectDocResult = result;
+        this.currentDirectSessionSummary = await documentApi.getCurrentDirectBatchSession(knowledgeBase);
+
+        const refreshQuery: DocumentListQuery = {
+          ...this.query,
+          page: 1
+        };
+
+        await this.refreshStatsAndList(refreshQuery);
+
+        return result;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      } finally {
+        this.uploading = false;
+      }
+    },
+
     async batchUploadCsvs(payload: BatchUploadRequestPayload): Promise<BatchUploadResponse> {
       this.uploading = true;
       this.error = '';
@@ -297,11 +331,37 @@ export const useDocumentStore = defineStore('documents', {
       }
     },
 
+    async refreshCurrentDirectSessionSummary(knowledgeBase = 'default'): Promise<UploadSessionSummary> {
+      this.error = '';
+
+      try {
+        const summary = await documentApi.getCurrentDirectBatchSession(knowledgeBase.trim() || 'default');
+        this.currentDirectSessionSummary = summary;
+        return summary;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      }
+    },
+
     async triggerBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
       this.error = '';
 
       try {
         const task = await documentApi.startBatchSync(payload);
+        this.batchSyncTask = task;
+        return task;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      }
+    },
+
+    async triggerDirectBatchSync(payload: BatchSyncStartPayload): Promise<BatchSyncTaskStatus> {
+      this.error = '';
+
+      try {
+        const task = await documentApi.startDirectBatchSync(payload);
         this.batchSyncTask = task;
         return task;
       } catch (error) {
@@ -338,6 +398,20 @@ export const useDocumentStore = defineStore('documents', {
 
         if (latest.status === 'completed') {
           await this.refresh();
+          if (this.currentSessionSummary?.knowledge_base) {
+            try {
+              await this.refreshCurrentSessionSummary(this.currentSessionSummary.knowledge_base);
+            } catch {
+              // ignore session refresh errors after task completion
+            }
+          }
+          if (this.currentDirectSessionSummary?.knowledge_base) {
+            try {
+              await this.refreshCurrentDirectSessionSummary(this.currentDirectSessionSummary.knowledge_base);
+            } catch {
+              // ignore direct session refresh errors after task completion
+            }
+          }
         }
 
         return latest;

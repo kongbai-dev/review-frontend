@@ -4,7 +4,8 @@ export type QAStatus = 'pending' | 'reviewed' | 'deprecated';
 export type DocumentStatus = string;
 export type DocumentSortField = 'uploaded_at' | 'file_name' | 'fragment_count' | 'qa_count';
 export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' | 'data';
-export type UploadMode = 'sync' | 'batch';
+export type UploadMode = 'sync' | 'batch' | 'batch_direct';
+export type MetadataMode = 'auto' | 'csv_required' | 'file_only';
 export type QAGenerationMode = 'append' | 'replace';
 export type DocumentPairStatus = 'pending_pair' | 'paired' | 'missing_csv' | 'invalid_csv' | 'ambiguous_pair';
 export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa' | 'processed_qa';
@@ -148,11 +149,11 @@ export interface UploadDocumentResult {
 
 export interface UploadSyncDocumentPayload {
   file: File;
-  metadata_csv: File;
+  metadata_csv?: File;
+  metadata_mode?: MetadataMode;
   knowledge_base?: string;
   document_type?: DocumentType;
   title?: string;
-  subdir?: string;
 }
 
 export interface BatchUploadFileItem {
@@ -266,6 +267,242 @@ export interface IngestionTaskStatus {
   finished_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface KnowledgeCodeFile {
+  id: string;
+  file_name: string;
+  file_path: string;
+  knowledge_base: string;
+  code_type: string;
+  language: string;
+  sub_type?: string;
+  simulation_tool?: string;
+  tool_version?: string;
+  tool_version_exact?: string;
+  file_version?: string;
+  source?: string;
+  project_id?: string;
+  project_role?: string;
+  source_doc_id?: string;
+  source_doc_page?: number;
+  source_doc_block_index?: number;
+  topics: string[];
+  scenes: string[];
+  tags: string[];
+  authors: string[];
+  owner?: string;
+  license?: string;
+  file_hash: string;
+  file_size?: number;
+  line_count?: number;
+  encoding?: string;
+  description?: string;
+  summary_for_retrieval?: string;
+  retrieval_boost?: number;
+  is_active?: boolean;
+  is_verified?: boolean;
+  verified_by?: string;
+  verified_at?: string;
+  created_by_user_id?: number;
+  created_at?: string;
+  updated_at?: string;
+  fragment_count: number;
+}
+
+export interface CodeFileListQuery {
+  page: number;
+  page_size: number;
+  knowledge_base?: string;
+  code_type?: string;
+  language?: string;
+  project_id?: string;
+  project_role?: string;
+  keyword?: string;
+}
+
+export interface UploadCodeFilePayload {
+  code_file: File;
+  knowledge_base?: string;
+  source?: string;
+  project_id?: string;
+  project_role?: string;
+  code_type?: string;
+  language?: string;
+  sub_type?: string;
+}
+
+export interface UploadCodeFileResult {
+  file_id: string;
+  file_name: string;
+  knowledge_base: string;
+  code_type: string;
+  language: string;
+  sub_type?: string;
+  fragment_count: number;
+  dependency_count: number;
+  queued_vector_jobs: number;
+}
+
+export interface CodeDependency {
+  id: string;
+  source_fragment_id: string;
+  target_fragment_id?: string;
+  target_external?: string;
+  relation_type: string;
+  relation_meta?: Record<string, unknown>;
+  strength?: number;
+  created_at?: string;
+}
+
+export interface CodeFragment {
+  id: string;
+  file_id: string;
+  project_id?: string;
+  fragment_type: string;
+  symbol_name?: string;
+  language?: string;
+  content: string;
+  summary_for_retrieval?: string;
+  line_start?: number;
+  line_end?: number;
+  retrieval_weight?: number;
+  source?: string;
+  created_at?: string;
+}
+
+export interface KnowledgeDataset {
+  id: string;
+  dataset_name: string;
+  source: string;
+  data_type: string;
+  sub_type?: string;
+  format: string;
+  file_name: string;
+  file_size?: number;
+  knowledge_base: string;
+  bucket_name: string;
+  object_key: string;
+  device_type?: string;
+  material_system?: string;
+  phenomenon?: string;
+  row_count?: number;
+  column_count?: number;
+  parse_status: string;
+  qa_status: string;
+  vector_status: string;
+  confidence_overall?: number;
+  is_active?: boolean;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+  topics: string[];
+  scenes: string[];
+}
+
+export interface DatasetListQuery {
+  page: number;
+  page_size: number;
+  knowledge_base?: string;
+  source?: string;
+  data_type?: string;
+  sub_type?: string;
+  device_type?: string;
+  material_system?: string;
+  phenomenon?: string;
+  parse_status?: string;
+  vector_status?: string;
+  keyword?: string;
+}
+
+export interface UploadDatasetPayload {
+  data_file: File;
+  knowledge_base?: string;
+  source?: string;
+  data_type?: string;
+  sub_type?: string;
+  version?: string;
+  dataset_name?: string;
+  device_type?: string;
+  material_system?: string;
+  phenomenon?: string;
+}
+
+export interface UploadDatasetResult {
+  dataset_id: string;
+  dataset_name: string;
+  object_key: string;
+  parse_status: string;
+  vector_status: string;
+  row_count?: number;
+  column_count?: number;
+  parsed_record_count?: number;
+}
+
+export interface DatasetParseResult {
+  dataset_id: string;
+  parse_status: string;
+  row_count?: number;
+  column_count?: number;
+  parsed_record_count?: number;
+  message: string;
+}
+
+export interface DatasetVectorSyncResult {
+  dataset_id: string;
+  queued: boolean;
+  job_type: string;
+  vector_status: string;
+}
+
+export interface DatasetRecord {
+  id: string;
+  dataset_id: string;
+  record_index: number;
+  record_name?: string;
+  record_type: string;
+  record_values?: Record<string, unknown>;
+  conditions_specific?: Record<string, unknown>;
+  labels?: Record<string, unknown>;
+  quality_flags?: Record<string, unknown>;
+  retrieval_text?: string;
+  created_at?: string;
+}
+
+export interface DatasetQAItem {
+  id: string;
+  dataset_id: string;
+  record_id?: string;
+  question: string;
+  answer: string;
+  qa_type?: string;
+  source: string;
+  review_status: string;
+  reviewer_id?: string;
+  reviewed_at?: string;
+  confidence_score?: number;
+  retrieval_text?: string;
+}
+
+export interface DatasetQAGenerationPayload {
+  dataset_ids: string[];
+  qa_count_per_dataset?: number;
+  qa_types?: string[];
+  mode?: QAGenerationMode;
+}
+
+export interface DatasetQAGenerationTask {
+  task_id: string;
+  status: string;
+  total_datasets: number;
+  processed_datasets: number;
+  success_datasets?: number;
+  failed_datasets?: number;
+  generated_total: number;
+  qa_count_per_dataset: number;
+  mode: QAGenerationMode;
+  started_at?: string;
+  finished_at?: string;
 }
 
 export interface MemberRankingItem {
