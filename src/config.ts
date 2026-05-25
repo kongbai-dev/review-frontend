@@ -32,6 +32,8 @@ export const API_CONFIG = {
     DOCUMENT_BATCH_SYNC_TASK: (taskId: string) => `/knowledge/documents/batch-sync/tasks/${taskId}`,
     DOCUMENT_QA_GENERATION_START: '/knowledge/documents/qa-generation/start',
     DOCUMENT_QA_GENERATION_TASK: (taskId: string) => `/knowledge/documents/qa-generation/tasks/${taskId}`,
+    DOCUMENT_QA_GENERATION_BATCH_START: '/knowledge/documents/qa-generation/batch-start',
+    DOCUMENT_QA_GENERATION_BATCH_TASK: (batchTaskId: string) => `/knowledge/documents/qa-generation/batch-tasks/${batchTaskId}`,
     CODE_FILE_LIST: '/knowledge/code-files',
     CODE_FILE_UPLOAD: '/knowledge/code-files',
     CODE_FILE_DETAIL: (fileId: string) => `/knowledge/code-files/${fileId}`,
@@ -63,4 +65,10 @@ export const DOCUMENT_BATCH_SYNC_CONFIG = {
   max_workers: 8,
   include_failed: true,
   strict_pairing: false
+} as const;
+
+export const DOCUMENT_QA_BATCH_CONFIG = {
+  fail_fast: false,
+  polling_interval_ms: 2500,
+  max_polls: 180
 } as const;

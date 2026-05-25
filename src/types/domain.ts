@@ -7,6 +7,8 @@ export type DocumentType = 'paper' | 'conference' | 'book' | 'manual' | 'code' |
 export type UploadMode = 'sync' | 'batch' | 'batch_direct';
 export type MetadataMode = 'auto' | 'csv_required' | 'file_only';
 export type QAGenerationMode = 'append' | 'replace';
+export type QABatchTaskStatusValue = 'queued' | 'running' | 'completed' | 'partial_failed' | 'failed';
+export type QABatchItemStatusValue = 'queued' | 'processing' | 'completed' | 'failed' | 'skipped';
 export type DocumentPairStatus = 'pending_pair' | 'paired' | 'missing_csv' | 'invalid_csv' | 'ambiguous_pair';
 export type MemberRankingSortField = 'default' | 'uploaded_docs' | 'reviewed_qa' | 'processed_qa';
 export type SortOrder = 'asc' | 'desc';
@@ -250,6 +252,53 @@ export interface QAGenerationStartResult {
   status: string;
   generated_qas: number;
   message: string;
+}
+
+export interface QABatchGenerationPayload {
+  document_ids: string[];
+  target_count?: number;
+  mode?: QAGenerationMode;
+  fail_fast?: boolean;
+}
+
+export interface QABatchGenerationStartResult {
+  batch_task_id: string;
+  status: QABatchTaskStatusValue | string;
+  total_documents: number;
+  queued_documents: number;
+  target_count_per_document: number;
+  mode: QAGenerationMode;
+  message: string;
+}
+
+export interface QABatchGenerationTaskItem {
+  document_id: string;
+  ingestion_task_id?: string | null;
+  status: QABatchItemStatusValue | string;
+  generated_qas: number;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  attempt_count: number;
+  updated_at?: string | null;
+}
+
+export interface QABatchGenerationTaskStatus {
+  batch_task_id: string;
+  status: QABatchTaskStatusValue | string;
+  total_documents: number;
+  queued_documents: number;
+  processed_documents: number;
+  success_documents: number;
+  failed_documents: number;
+  skipped_documents: number;
+  target_count_per_document: number;
+  mode: QAGenerationMode;
+  message: string;
+  stop_requested: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  items: QABatchGenerationTaskItem[];
 }
 
 export interface IngestionTaskStatus {

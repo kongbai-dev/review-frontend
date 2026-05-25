@@ -1,0 +1,476 @@
+openapi: 3.0.3
+info:
+  title: AI TCAD Review Backend - QA Batch Generation APIs
+  version: "2026-05-19"
+  description: |
+    Frontend integration contract for QA batch generation.
+    This file only contains the two QA batch endpoints under
+    /api/v1/knowledge/documents/qa-generation.
+
+servers:
+  - url: http://localhost:8000
+    description: Local backend_api
+
+tags:
+  - name: v1-documents
+    description: Document and QA generation APIs
+
+paths:
+  /api/v1/knowledge/documents/qa-generation/batch-start:
+    post:
+      tags:
+        - v1-documents
+      summary: Start QA batch generation
+      description: |
+        Submit an asynchronous QA batch generation task for multiple documents.
+        This endpoint only creates the batch task and batch items; actual generation
+        is performed later by backend workers. The same target_count is applied to each document.
+      operationId: startQABatchGeneration
+      security:
+        - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QABatchGenerationRequest"
+            examples:
+              appendMode:
+                summary: Append mode example
+                value:
+                  document_ids:
+                    - doc_001
+                    - doc_002
+                  target_count: 10
+                  mode: append
+                  fail_fast: false
+              replaceMode:
+                summary: Replace mode example
+                value:
+                  document_ids:
+                    - doc_003
+                  target_count: 5
+                  mode: replace
+                  fail_fast: true
+      responses:
+        "200":
+          description: Batch task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QABatchGenerationStartResponse"
+              examples:
+                success:
+                  value:
+                    batch_task_id: "9a0f7f6a-3c68-4966-becf-7b56d6b2349a"
+                    status: queued
+                    total_documents: 2
+                    queued_documents: 2
+                    target_count_per_document: 10
+                    mode: append
+                    message: qa batch generation task started
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Some document IDs do not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchStartNotFoundErrorResponse"
+              examples:
+                someDocumentsNotFound:
+                  value:
+                    detail:
+                      message: some documents not found
+                      missing_document_ids:
+                        - doc_not_found_1
+                        - doc_not_found_2
+        "422":
+          description: Validation error or normalized document_ids became empty
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/HTTPValidationError"
+                  - $ref: "#/components/schemas/ErrorMessageResponse"
+              examples:
+                normalizedEmpty:
+                  value:
+                    detail: document_ids is empty after normalization
+                fastapiValidationError:
+                  value:
+                    detail:
+                      - loc:
+                          - body
+                          - document_ids
+                        msg: ensure this value has at least 1 items
+                        type: value_error.list.min_items
+
+  /api/v1/knowledge/documents/qa-generation/batch-tasks/{batch_task_id}:
+    get:
+      tags:
+        - v1-documents
+      summary: Get QA batch generation task detail
+      description: Query the progress and per-document results of a batch task.
+      operationId: getQABatchGenerationTask
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: batch_task_id
+          in: path
+          required: true
+          description: Batch task ID returned by batch-start endpoint
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Batch task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QABatchGenerationTaskResponse"
+              examples:
+                running:
+                  value:
+                    batch_task_id: "9a0f7f6a-3c68-4966-becf-7b56d6b2349a"
+                    status: running
+                    total_documents: 2
+                    queued_documents: 1
+                    processed_documents: 1
+                    success_documents: 1
+                    failed_documents: 0
+                    skipped_documents: 0
+                    target_count_per_document: 10
+                    mode: append
+                    message: processed=1, success=1, failed=0, skipped=0, queued=1, processing=0
+                    stop_requested: false
+                    started_at: "2026-04-16T10:00:00Z"
+                    finished_at: null
+                    items:
+                      - document_id: doc_001
+                        ingestion_task_id: "af915f2f-876c-43da-bcb9-2ab20e94de5d"
+                        status: completed
+                        generated_qas: 10
+                        error_message: null
+                        started_at: "2026-04-16T10:00:01Z"
+                        finished_at: "2026-04-16T10:00:04Z"
+                        attempt_count: 1
+                        updated_at: "2026-04-16T10:00:04Z"
+                      - document_id: doc_002
+                        ingestion_task_id: null
+                        status: queued
+                        generated_qas: 0
+                        error_message: null
+                        started_at: null
+                        finished_at: null
+                        attempt_count: 0
+                        updated_at: "2026-04-16T10:00:00Z"
+                finishedPartialFailed:
+                  value:
+                    batch_task_id: "9a0f7f6a-3c68-4966-becf-7b56d6b2349a"
+                    status: partial_failed
+                    total_documents: 2
+                    queued_documents: 0
+                    processed_documents: 2
+                    success_documents: 1
+                    failed_documents: 1
+                    skipped_documents: 0
+                    target_count_per_document: 10
+                    mode: append
+                    message: processed=2, success=1, failed=1, skipped=0, queued=0, processing=0
+                    stop_requested: true
+                    started_at: "2026-04-16T10:00:00Z"
+                    finished_at: "2026-04-16T10:00:11Z"
+                    items:
+                      - document_id: doc_001
+                        ingestion_task_id: "af915f2f-876c-43da-bcb9-2ab20e94de5d"
+                        status: completed
+                        generated_qas: 10
+                        error_message: null
+                        started_at: "2026-04-16T10:00:01Z"
+                        finished_at: "2026-04-16T10:00:04Z"
+                        attempt_count: 1
+                        updated_at: "2026-04-16T10:00:04Z"
+                      - document_id: doc_002
+                        ingestion_task_id: "3b7fcf7d-f1fd-4885-a4ec-a16f35f98f7d"
+                        status: failed
+                        generated_qas: 0
+                        error_message: "document not found: doc_002"
+                        started_at: "2026-04-16T10:00:05Z"
+                        finished_at: "2026-04-16T10:00:10Z"
+                        attempt_count: 1
+                        updated_at: "2026-04-16T10:00:10Z"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Batch task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessageResponse"
+              example:
+                detail: qa batch generation task not found
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+
+components:
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    UnauthorizedError:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessageResponse"
+          example:
+            detail: Not authenticated
+    ForbiddenError:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessageResponse"
+          example:
+            detail: permission denied
+
+  schemas:
+    BatchMode:
+      type: string
+      enum:
+        - append
+        - replace
+      description: |
+        append: keep existing QA and append new generated QA.
+        replace: delete existing QA of the document first, then generate.
+
+    BatchTaskStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - completed
+        - partial_failed
+        - failed
+
+    BatchItemStatus:
+      type: string
+      enum:
+        - queued
+        - processing
+        - completed
+        - failed
+        - skipped
+
+    QABatchGenerationRequest:
+      type: object
+      required:
+        - document_ids
+      properties:
+        document_ids:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: string
+          description: |
+            Target document IDs. Backend will trim and deduplicate IDs.
+        target_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+          description: Number of QA to generate for each document.
+        mode:
+          $ref: "#/components/schemas/BatchMode"
+        fail_fast:
+          type: boolean
+          default: false
+          description: |
+            false: continue processing all documents.
+            true: once one item fails, backend marks stop_requested=true,
+            workers stop claiming new queued items for this batch, items already in
+            processing are allowed to finish, and remaining queued items are marked skipped.
+
+    QABatchGenerationStartResponse:
+      type: object
+      required:
+        - batch_task_id
+        - status
+        - total_documents
+        - queued_documents
+        - target_count_per_document
+        - mode
+        - message
+      properties:
+        batch_task_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+        total_documents:
+          type: integer
+        queued_documents:
+          type: integer
+        target_count_per_document:
+          type: integer
+        mode:
+          $ref: "#/components/schemas/BatchMode"
+        message:
+          type: string
+
+    QABatchGenerationItem:
+      type: object
+      required:
+        - document_id
+        - status
+      properties:
+        document_id:
+          type: string
+        ingestion_task_id:
+          type: string
+          nullable: true
+          description: Associated ingestion task id created per document.
+        status:
+          $ref: "#/components/schemas/BatchItemStatus"
+        generated_qas:
+          type: integer
+          default: 0
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        attempt_count:
+          type: integer
+          default: 0
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    QABatchGenerationTaskResponse:
+      type: object
+      required:
+        - batch_task_id
+        - status
+        - total_documents
+        - processed_documents
+        - success_documents
+        - failed_documents
+        - target_count_per_document
+        - mode
+      properties:
+        batch_task_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/BatchTaskStatus"
+        total_documents:
+          type: integer
+        queued_documents:
+          type: integer
+        processed_documents:
+          type: integer
+        success_documents:
+          type: integer
+        failed_documents:
+          type: integer
+        skipped_documents:
+          type: integer
+        target_count_per_document:
+          type: integer
+        mode:
+          $ref: "#/components/schemas/BatchMode"
+        message:
+          type: string
+          default: ""
+        stop_requested:
+          type: boolean
+          default: false
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QABatchGenerationItem"
+
+    BatchStartNotFoundErrorDetail:
+      type: object
+      required:
+        - message
+        - missing_document_ids
+      properties:
+        message:
+          type: string
+          example: some documents not found
+        missing_document_ids:
+          type: array
+          items:
+            type: string
+
+    BatchStartNotFoundErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          $ref: "#/components/schemas/BatchStartNotFoundErrorDetail"
+
+    ErrorMessageResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      properties:
+        loc:
+          type: array
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string

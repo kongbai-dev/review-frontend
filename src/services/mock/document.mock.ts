@@ -14,6 +14,10 @@ import type {
   DocumentType,
   IngestionTaskStatus,
   KnowledgeDocument,
+  QABatchGenerationPayload,
+  QABatchGenerationStartResult,
+  QABatchGenerationTaskStatus,
+  QAGenerationMode,
   QAGenerationPayload,
   QAGenerationStartResult,
   UploadDocumentResult,
@@ -162,6 +166,11 @@ interface InternalBatchTask extends BatchSyncTaskStatus {
   tick: number;
 }
 
+interface InternalQABatchTask extends QABatchGenerationTaskStatus {
+  fail_fast: boolean;
+  tick: number;
+}
+
 let mockDocuments: KnowledgeDocument[] = seedDocuments.map((item, index) => ({
   document_id: `doc_${(index + 1).toString().padStart(4, '0')}`,
   ...item,
@@ -175,6 +184,7 @@ const openSessionsByKnowledgeBase = new Map<string, MockUploadSession>();
 const openDirectSessionsByKnowledgeBase = new Map<string, MockDirectUploadSession>();
 const batchSyncTasks = new Map<string, InternalBatchTask>();
 const qaGenerationTasks = new Map<string, IngestionTaskStatus>();
+const qaBatchGenerationTasks = new Map<string, InternalQABatchTask>();
 
 const buildStats = (): DocumentStats => {
   const indexed = mockDocuments.filter((item) => item.status === 'indexed').length;
@@ -508,6 +518,77 @@ const refreshPairingForKnowledgeBase = (knowledgeBase: string): void => {
     return;
   }
   recomputePairing(session);
+};
+
+const cloneQABatchTask = (task: InternalQABatchTask): QABatchGenerationTaskStatus => ({
+  batch_task_id: task.batch_task_id,
+  status: task.status,
+  total_documents: task.total_documents,
+  queued_documents: task.queued_documents,
+  processed_documents: task.processed_documents,
+  success_documents: task.success_documents,
+  failed_documents: task.failed_documents,
+  skipped_documents: task.skipped_documents,
+  target_count_per_document: task.target_count_per_document,
+  mode: task.mode,
+  message: task.message,
+  stop_requested: task.stop_requested,
+  started_at: task.started_at,
+  finished_at: task.finished_at,
+  items: task.items.map((item) => ({ ...item }))
+});
+
+const throwMissingDocumentsError = (missingDocumentIds: string[]): never => {
+  const detail = {
+    message: 'some documents not found',
+    missing_document_ids: missingDocumentIds
+  };
+
+  const error = new Error(detail.message) as Error & {
+    status: number;
+    response: {
+      status: number;
+      data: {
+        detail: typeof detail;
+      };
+    };
+  };
+
+  error.status = 404;
+  error.response = {
+    status: 404,
+    data: {
+      detail
+    }
+  };
+
+  throw error;
+};
+
+const recomputeQABatchTask = (task: InternalQABatchTask): void => {
+  const queuedDocuments = task.items.filter((item) => item.status === 'queued').length;
+  const processingDocuments = task.items.filter((item) => item.status === 'processing').length;
+  const successDocuments = task.items.filter((item) => item.status === 'completed').length;
+  const failedDocuments = task.items.filter((item) => item.status === 'failed').length;
+  const skippedDocuments = task.items.filter((item) => item.status === 'skipped').length;
+
+  task.queued_documents = queuedDocuments;
+  task.success_documents = successDocuments;
+  task.failed_documents = failedDocuments;
+  task.skipped_documents = skippedDocuments;
+  task.processed_documents = successDocuments + failedDocuments + skippedDocuments;
+  task.message =
+    `processed=${task.processed_documents}, success=${successDocuments}, failed=${failedDocuments}, ` +
+    `skipped=${skippedDocuments}, queued=${queuedDocuments}, processing=${processingDocuments}`;
+
+  if (queuedDocuments === 0 && processingDocuments === 0) {
+    task.status =
+      successDocuments === task.total_documents ? 'completed' : successDocuments === 0 ? 'failed' : 'partial_failed';
+    task.finished_at = new Date().toISOString();
+    return;
+  }
+
+  task.status = task.started_at ? 'running' : 'queued';
 };
 
 export const getMockDocumentsSnapshot = (): KnowledgeDocument[] => mockDocuments.map((item) => ({ ...item }));
@@ -1091,6 +1172,72 @@ export const mockDocumentApi = {
     };
   },
 
+  async startQaBatchGeneration(payload: QABatchGenerationPayload): Promise<QABatchGenerationStartResult> {
+    await sleep(180);
+
+    const normalizedDocumentIds = [...new Set(payload.document_ids.map((item) => item.trim()).filter(Boolean))];
+    if (normalizedDocumentIds.length === 0) {
+      throw mockHttpError(422, 'document_ids is empty after normalization');
+    }
+
+    const targetCount = payload.target_count ?? 10;
+    if (targetCount < 1 || targetCount > 100) {
+      throw mockHttpError(422, 'target_count must be between 1 and 100');
+    }
+
+    const mode: QAGenerationMode = payload.mode ?? 'append';
+    const missingDocumentIds = normalizedDocumentIds.filter(
+      (documentId) => !mockDocuments.some((item) => item.document_id === documentId)
+    );
+    if (missingDocumentIds.length > 0) {
+      throwMissingDocumentsError(missingDocumentIds);
+    }
+
+    const now = new Date().toISOString();
+    const batchTaskId = nextTaskId();
+    const task: InternalQABatchTask = {
+      batch_task_id: batchTaskId,
+      status: 'queued',
+      total_documents: normalizedDocumentIds.length,
+      queued_documents: normalizedDocumentIds.length,
+      processed_documents: 0,
+      success_documents: 0,
+      failed_documents: 0,
+      skipped_documents: 0,
+      target_count_per_document: targetCount,
+      mode,
+      message: 'qa batch generation task started',
+      stop_requested: false,
+      started_at: null,
+      finished_at: null,
+      items: normalizedDocumentIds.map((documentId) => ({
+        document_id: documentId,
+        ingestion_task_id: null,
+        status: 'queued',
+        generated_qas: 0,
+        error_message: null,
+        started_at: null,
+        finished_at: null,
+        attempt_count: 0,
+        updated_at: now
+      })),
+      fail_fast: payload.fail_fast ?? false,
+      tick: 0
+    };
+
+    qaBatchGenerationTasks.set(batchTaskId, task);
+
+    return {
+      batch_task_id: batchTaskId,
+      status: 'queued',
+      total_documents: task.total_documents,
+      queued_documents: task.queued_documents,
+      target_count_per_document: targetCount,
+      mode,
+      message: 'qa batch generation task started'
+    };
+  },
+
   async getQaGenerationTask(taskId: string): Promise<IngestionTaskStatus> {
     await sleep(100);
     const task = qaGenerationTasks.get(taskId);
@@ -1098,6 +1245,78 @@ export const mockDocumentApi = {
       throw mockHttpError(404, 'qa generation task not found');
     }
     return { ...task };
+  },
+
+  async getQaBatchGenerationTask(batchTaskId: string): Promise<QABatchGenerationTaskStatus> {
+    await sleep(120);
+    const task = qaBatchGenerationTasks.get(batchTaskId);
+    if (!task) {
+      throw mockHttpError(404, 'qa batch generation task not found');
+    }
+
+    if (task.status === 'queued') {
+      task.status = 'running';
+      task.started_at = new Date().toISOString();
+      recomputeQABatchTask(task);
+      task.tick += 1;
+      return cloneQABatchTask(task);
+    }
+
+    if (task.status === 'running') {
+      const nextQueuedItem = task.items.find((item) => item.status === 'queued');
+
+      if (nextQueuedItem) {
+        const startedAt = new Date().toISOString();
+        nextQueuedItem.status = 'processing';
+        nextQueuedItem.started_at = startedAt;
+        nextQueuedItem.ingestion_task_id = nextTaskId();
+        nextQueuedItem.attempt_count += 1;
+        nextQueuedItem.updated_at = startedAt;
+
+        const targetDocument = mockDocuments.find((item) => item.document_id === nextQueuedItem.document_id);
+        const finishedAt = new Date().toISOString();
+
+        if (!targetDocument || targetDocument.file_name.toLowerCase().includes('fail')) {
+          nextQueuedItem.status = 'failed';
+          nextQueuedItem.generated_qas = 0;
+          nextQueuedItem.error_message = `qa generation failed for ${nextQueuedItem.document_id}`;
+          nextQueuedItem.finished_at = finishedAt;
+          nextQueuedItem.updated_at = finishedAt;
+
+          if (task.fail_fast) {
+            task.stop_requested = true;
+            for (const item of task.items.filter((candidate) => candidate.status === 'queued')) {
+              item.status = 'skipped';
+              item.error_message = 'skipped due to fail_fast after previous failure';
+              item.finished_at = finishedAt;
+              item.updated_at = finishedAt;
+            }
+          }
+        } else {
+          if (task.mode === 'replace') {
+            targetDocument.qa_count = 0;
+          }
+
+          targetDocument.qa_count += task.target_count_per_document;
+          if (targetDocument.fragment_count === 0) {
+            targetDocument.fragment_count = Math.max(12, task.target_count_per_document * 2);
+          }
+          targetDocument.status = 'indexed';
+          targetDocument.latest_task_status = 'completed';
+
+          nextQueuedItem.status = 'completed';
+          nextQueuedItem.generated_qas = task.target_count_per_document;
+          nextQueuedItem.error_message = null;
+          nextQueuedItem.finished_at = finishedAt;
+          nextQueuedItem.updated_at = finishedAt;
+        }
+      }
+
+      recomputeQABatchTask(task);
+      task.tick += 1;
+    }
+
+    return cloneQABatchTask(task);
   },
 
   async getDownloadUrl(documentId: string): Promise<string> {

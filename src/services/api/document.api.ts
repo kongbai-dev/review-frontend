@@ -15,6 +15,9 @@ import type {
   DocumentType,
   IngestionTaskStatus,
   KnowledgeDocument,
+  QABatchGenerationPayload,
+  QABatchGenerationStartResult,
+  QABatchGenerationTaskStatus,
   QAGenerationPayload,
   QAGenerationStartResult,
   UploadSessionSummary,
@@ -296,6 +299,90 @@ const parseQAGenerationResult = (raw: unknown): QAGenerationStartResult => {
   };
 };
 
+const parseQABatchGenerationStartResult = (raw: unknown): QABatchGenerationStartResult => {
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: qa batch generation start response must be object');
+  }
+
+  const mode = expectString(raw.mode, 'qaBatchGeneration.mode');
+  if (mode !== 'append' && mode !== 'replace') {
+    throw new Error('Contract mismatch: qaBatchGeneration.mode must be append|replace');
+  }
+
+  return {
+    batch_task_id: expectString(raw.batch_task_id, 'qaBatchGeneration.batch_task_id'),
+    status: expectString(raw.status, 'qaBatchGeneration.status'),
+    total_documents: expectNumber(raw.total_documents, 'qaBatchGeneration.total_documents'),
+    queued_documents: expectNumber(raw.queued_documents, 'qaBatchGeneration.queued_documents'),
+    target_count_per_document: expectNumber(raw.target_count_per_document, 'qaBatchGeneration.target_count_per_document'),
+    mode,
+    message: expectString(raw.message, 'qaBatchGeneration.message')
+  };
+};
+
+const parseQABatchGenerationTaskStatus = (raw: unknown): QABatchGenerationTaskStatus => {
+  if (!isObject(raw)) {
+    throw new Error('Contract mismatch: qa batch generation task response must be object');
+  }
+
+  const mode = expectString(raw.mode, 'qaBatchTask.mode');
+  if (mode !== 'append' && mode !== 'replace') {
+    throw new Error('Contract mismatch: qaBatchTask.mode must be append|replace');
+  }
+
+  const stopRequestedRaw = raw.stop_requested;
+  const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+
+  return {
+    batch_task_id: expectString(raw.batch_task_id, 'qaBatchTask.batch_task_id'),
+    status: expectString(raw.status, 'qaBatchTask.status'),
+    total_documents: expectNumber(raw.total_documents, 'qaBatchTask.total_documents'),
+    queued_documents: expectOptionalNumber(raw.queued_documents, 'qaBatchTask.queued_documents') ?? 0,
+    processed_documents: expectNumber(raw.processed_documents, 'qaBatchTask.processed_documents'),
+    success_documents: expectNumber(raw.success_documents, 'qaBatchTask.success_documents'),
+    failed_documents: expectNumber(raw.failed_documents, 'qaBatchTask.failed_documents'),
+    skipped_documents: expectOptionalNumber(raw.skipped_documents, 'qaBatchTask.skipped_documents') ?? 0,
+    target_count_per_document: expectNumber(raw.target_count_per_document, 'qaBatchTask.target_count_per_document'),
+    mode,
+    message: expectOptionalString(raw.message, 'qaBatchTask.message') ?? '',
+    stop_requested: typeof stopRequestedRaw === 'boolean' ? stopRequestedRaw : false,
+    started_at: raw.started_at === null ? null : expectOptionalString(raw.started_at, 'qaBatchTask.started_at'),
+    finished_at: raw.finished_at === null ? null : expectOptionalString(raw.finished_at, 'qaBatchTask.finished_at'),
+    items: itemsRaw.map((item, index) => {
+      if (!isObject(item)) {
+        throw new Error(`Contract mismatch: qaBatchTask.items[${index}] must be object`);
+      }
+
+      return {
+        document_id: expectString(item.document_id, `qaBatchTask.items[${index}].document_id`),
+        ingestion_task_id:
+          item.ingestion_task_id === null
+            ? null
+            : expectOptionalString(item.ingestion_task_id, `qaBatchTask.items[${index}].ingestion_task_id`),
+        status: expectString(item.status, `qaBatchTask.items[${index}].status`),
+        generated_qas: expectOptionalNumber(item.generated_qas, `qaBatchTask.items[${index}].generated_qas`) ?? 0,
+        error_message:
+          item.error_message === null
+            ? null
+            : expectOptionalString(item.error_message, `qaBatchTask.items[${index}].error_message`),
+        started_at:
+          item.started_at === null
+            ? null
+            : expectOptionalString(item.started_at, `qaBatchTask.items[${index}].started_at`),
+        finished_at:
+          item.finished_at === null
+            ? null
+            : expectOptionalString(item.finished_at, `qaBatchTask.items[${index}].finished_at`),
+        attempt_count: expectOptionalNumber(item.attempt_count, `qaBatchTask.items[${index}].attempt_count`) ?? 0,
+        updated_at:
+          item.updated_at === null
+            ? null
+            : expectOptionalString(item.updated_at, `qaBatchTask.items[${index}].updated_at`)
+      };
+    })
+  };
+};
+
 const parseIngestionTaskStatus = (raw: unknown, fallbackTaskId = ''): IngestionTaskStatus => {
   if (!isObject(raw)) {
     throw new Error('Contract mismatch: ingestion task status response must be object');
@@ -571,6 +658,23 @@ export const documentApi = {
     return parseQAGenerationResult(response.data);
   },
 
+  async startQaBatchGeneration(payload: QABatchGenerationPayload): Promise<QABatchGenerationStartResult> {
+    if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
+      return mockDocumentApi.startQaBatchGeneration(payload);
+    }
+
+    const requestBody: QABatchGenerationPayload = {
+      document_ids: payload.document_ids,
+      target_count: payload.target_count,
+      mode: payload.mode,
+      fail_fast: payload.fail_fast
+    };
+
+    const response = await http.post<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_BATCH_START, requestBody);
+    return parseQABatchGenerationStartResult(response.data);
+  },
+
   async getQaGenerationTask(taskId: string): Promise<IngestionTaskStatus> {
     if (API_CONFIG.USE_MOCK) {
       const mockDocumentApi = await getDocumentMockApi();
@@ -579,6 +683,16 @@ export const documentApi = {
 
     const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_TASK(taskId));
     return parseIngestionTaskStatus(response.data, taskId);
+  },
+
+  async getQaBatchGenerationTask(batchTaskId: string): Promise<QABatchGenerationTaskStatus> {
+    if (API_CONFIG.USE_MOCK) {
+      const mockDocumentApi = await getDocumentMockApi();
+      return mockDocumentApi.getQaBatchGenerationTask(batchTaskId);
+    }
+
+    const response = await http.get<unknown>(API_CONFIG.ENDPOINTS.DOCUMENT_QA_GENERATION_BATCH_TASK(batchTaskId));
+    return parseQABatchGenerationTaskStatus(response.data);
   },
 
   async getDownloadUrl(documentId: string): Promise<string> {

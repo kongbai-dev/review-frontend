@@ -12,6 +12,9 @@ import type {
   DocumentStats,
   IngestionTaskStatus,
   KnowledgeDocument,
+  QABatchGenerationPayload,
+  QABatchGenerationStartResult,
+  QABatchGenerationTaskStatus,
   QAGenerationPayload,
   QAGenerationStartResult,
   UploadDocumentResult,
@@ -63,6 +66,9 @@ interface DocumentState {
   qaGenerationStartResult: QAGenerationStartResult | null;
   qaGenerationTask: IngestionTaskStatus | null;
   qaGenerationPolling: boolean;
+  qaBatchStartResult: QABatchGenerationStartResult | null;
+  qaBatchTask: QABatchGenerationTaskStatus | null;
+  qaBatchPolling: boolean;
   error: string;
 }
 
@@ -78,6 +84,7 @@ const triggerBrowserDownload = (url: string): void => {
 
 const terminalBatchStatus = new Set(['skipped', 'completed', 'failed']);
 const terminalTaskStatus = new Set(['completed', 'failed', 'canceled', 'cancelled']);
+const terminalQABatchStatus = new Set(['completed', 'partial_failed', 'failed']);
 
 export const useDocumentStore = defineStore('documents', {
   state: (): DocumentState => ({
@@ -100,6 +107,9 @@ export const useDocumentStore = defineStore('documents', {
     qaGenerationStartResult: null,
     qaGenerationTask: null,
     qaGenerationPolling: false,
+    qaBatchStartResult: null,
+    qaBatchTask: null,
+    qaBatchPolling: false,
     error: ''
   }),
 
@@ -477,6 +487,64 @@ export const useDocumentStore = defineStore('documents', {
         return latest;
       } finally {
         this.qaGenerationPolling = false;
+      }
+    },
+
+    async triggerQaBatchGeneration(payload: QABatchGenerationPayload): Promise<QABatchGenerationStartResult> {
+      this.error = '';
+      this.qaBatchStartResult = null;
+      this.qaBatchTask = null;
+
+      try {
+        const result = await documentApi.startQaBatchGeneration(payload);
+        this.qaBatchStartResult = result;
+
+        try {
+          this.qaBatchTask = await documentApi.getQaBatchGenerationTask(result.batch_task_id);
+        } catch {
+          // Keep the start result even if the task detail endpoint is temporarily unavailable.
+        }
+
+        return result;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      }
+    },
+
+    async refreshQaBatchGenerationTask(batchTaskId: string): Promise<QABatchGenerationTaskStatus> {
+      this.error = '';
+
+      try {
+        const task = await documentApi.getQaBatchGenerationTask(batchTaskId);
+        this.qaBatchTask = task;
+        return task;
+      } catch (error) {
+        this.error = normalizeError(error);
+        throw error;
+      }
+    },
+
+    async pollQaBatchGenerationTask(batchTaskId: string, options: PollingOptions = {}): Promise<QABatchGenerationTaskStatus> {
+      const intervalMs = options.intervalMs ?? 3000;
+      const maxPolls = options.maxPolls ?? 120;
+
+      this.qaBatchPolling = true;
+
+      try {
+        const latest = await pollUntil(
+          () => this.refreshQaBatchGenerationTask(batchTaskId),
+          (task) => terminalQABatchStatus.has(task.status),
+          { intervalMs, maxPolls }
+        );
+
+        if (terminalQABatchStatus.has(latest.status)) {
+          await this.refresh();
+        }
+
+        return latest;
+      } finally {
+        this.qaBatchPolling = false;
       }
     },
 

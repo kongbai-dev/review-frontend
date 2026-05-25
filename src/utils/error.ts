@@ -17,6 +17,14 @@ export const normalizeError = (error: unknown): string => {
 
       if (isObject(detail)) {
         if (typeof detail.message === 'string' && detail.message.trim()) {
+          const missingDocumentIds = Array.isArray(detail.missing_document_ids)
+            ? detail.missing_document_ids.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            : [];
+
+          if (missingDocumentIds.length > 0) {
+            return `${detail.message}: ${missingDocumentIds.join(', ')}`;
+          }
+
           const currentVersion = detail.current_version;
           if (typeof currentVersion === 'number') {
             return `${detail.message} (current_version=${currentVersion})`;

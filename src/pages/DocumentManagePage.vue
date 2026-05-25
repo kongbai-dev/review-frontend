@@ -156,68 +156,155 @@
               :disabled="!canOpenQaPanel"
               @click="showQaPanel = !showQaPanel"
             >
-              {{ showQaPanel ? '收起生成QA' : '生成 QA' }}
+              {{ showQaPanel ? '收起批量QA' : '批量生成 QA' }}
             </button>
             <button
               type="button"
               class="btn btn-ghost btn-sm"
               :disabled="documentStore.selectedCount === 0"
-              @click="documentStore.clearSelection()"
+              @click="handleClearSelection"
             >
               清空选择
             </button>
-            <span v-if="documentStore.selectedCount > 1" class="text-xs text-[var(--color-warning)]">当前仅支持单文档触发 QA 生成</span>
+            <span class="text-xs text-[var(--color-text-secondary)]">fail_fast 已固定为 {{ DOCUMENT_QA_BATCH_CONFIG.fail_fast ? 'true' : 'false' }}</span>
             <span v-if="!canManage" class="text-xs text-[var(--color-warning)]">observer 角色不可触发生成</span>
           </div>
 
           <div
-            v-if="showQaPanel && selectedDocument"
+            v-if="showQaPanel && selectedDocuments.length > 0"
             class="mt-3 rounded-xl border border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-bg-elevated)_92%,transparent)] p-3"
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p class="text-sm font-medium">手动生成 QA</p>
-                <p class="text-xs text-[var(--color-text-secondary)]">{{ selectedDocument.file_name }}（{{ selectedDocument.document_id }}）</p>
+                <p class="text-sm font-medium">批量生成 QA</p>
+                <p class="text-xs text-[var(--color-text-secondary)]">
+                  已选择 {{ selectedDocuments.length }} 个文档，批任务会异步入队并由后端 worker 处理。
+                </p>
               </div>
               <button type="button" class="btn btn-ghost btn-sm" @click="showQaPanel = false">收起</button>
+            </div>
+
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span
+                v-for="documentItem in selectedDocuments.slice(0, 6)"
+                :key="documentItem.document_id"
+                class="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-xs text-[var(--color-text-secondary)]"
+              >
+                {{ documentItem.file_name }}
+              </span>
+              <span
+                v-if="selectedDocuments.length > 6"
+                class="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-xs text-[var(--color-text-secondary)]"
+              >
+                +{{ selectedDocuments.length - 6 }} 个
+              </span>
             </div>
 
             <div class="mt-3 grid gap-2 sm:grid-cols-2">
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">目标 QA 数（1~100）</span>
-                <input v-model.number="qaForm.target_count" type="number" min="1" max="100" class="form-control h-9 px-2 text-sm" :disabled="qaSubmitting || documentStore.qaGenerationPolling || !canManage" />
+                <input v-model.number="qaForm.target_count" type="number" min="1" max="100" class="form-control h-9 px-2 text-sm" :disabled="qaSubmitting || documentStore.qaBatchPolling || !canManage" />
               </label>
               <label class="text-sm">
                 <span class="mb-1 block text-[11px] text-[var(--color-text-secondary)]">生成模式</span>
-                <select v-model="qaForm.mode" class="form-control h-9 px-2 text-sm" :disabled="qaSubmitting || documentStore.qaGenerationPolling || !canManage">
+                <select v-model="qaForm.mode" class="form-control h-9 px-2 text-sm" :disabled="qaSubmitting || documentStore.qaBatchPolling || !canManage">
                   <option value="append">append（追加）</option>
                   <option value="replace">replace（先清空后重建）</option>
                 </select>
               </label>
             </div>
 
+            <p class="mt-2 text-xs text-[var(--color-text-secondary)]">
+              当前批任务配置：每个文档目标生成 {{ qaForm.target_count }} 条 QA，mode={{ qaForm.mode }}，fail_fast={{ DOCUMENT_QA_BATCH_CONFIG.fail_fast ? 'true' : 'false' }}。
+            </p>
             <p v-if="qaError" class="mt-2 text-sm text-[var(--color-danger)]">{{ qaError }}</p>
 
             <div class="mt-3 flex items-center gap-2">
               <button
                 type="button"
                 class="btn btn-success btn-sm"
-                :disabled="qaSubmitting || documentStore.qaGenerationPolling || !canManage"
+                :disabled="qaSubmitting || documentStore.qaBatchPolling || !canManage"
                 @click="handleStartQaGeneration"
               >
-                {{ qaSubmitting || documentStore.qaGenerationPolling ? '执行中...' : '确认生成' }}
+                {{ qaSubmitting || documentStore.qaBatchPolling ? '提交中...' : '确认生成' }}
               </button>
             </div>
           </div>
 
-          <div v-if="documentStore.qaGenerationStartResult || documentStore.qaGenerationTask" class="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-3 py-2 text-sm">
-            <p class="font-medium">QA 任务状态</p>
-            <p v-if="documentStore.qaGenerationStartResult" class="text-xs text-[var(--color-text-secondary)]">
-              最近启动：task={{ documentStore.qaGenerationStartResult.task_id }} · status={{ documentStore.qaGenerationStartResult.status }} · generated={{ documentStore.qaGenerationStartResult.generated_qas }}
+          <div v-if="documentStore.qaBatchStartResult || documentStore.qaBatchTask" class="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-3 py-2.5 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                <p class="font-medium text-[var(--color-text-primary)]">QA 批任务</p>
+                <span v-if="documentStore.qaBatchStartResult" class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)]">
+                  {{ documentStore.qaBatchStartResult.batch_task_id }}
+                </span>
+                <span
+                  v-if="documentStore.qaBatchTask"
+                  class="rounded-md px-2 py-0.5 text-[11px] font-medium"
+                  :class="qaBatchStatusClass(documentStore.qaBatchTask.status)"
+                >
+                  {{ documentStore.qaBatchTask.status }}
+                </span>
+              </div>
+              <span v-if="documentStore.qaBatchTask" class="text-[11px] text-[var(--color-text-secondary)]">
+                {{ documentStore.qaBatchTask.processed_documents }}/{{ documentStore.qaBatchTask.total_documents }}
+              </span>
+            </div>
+
+            <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+              <span v-if="documentStore.qaBatchStartResult" class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                queued {{ documentStore.qaBatchStartResult.queued_documents }}
+              </span>
+              <span v-if="documentStore.qaBatchStartResult" class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                each {{ documentStore.qaBatchStartResult.target_count_per_document }}
+              </span>
+              <template v-if="documentStore.qaBatchTask">
+                <span class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                  success {{ documentStore.qaBatchTask.success_documents }}
+                </span>
+                <span class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                  failed {{ documentStore.qaBatchTask.failed_documents }}
+                </span>
+                <span class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                  skipped {{ documentStore.qaBatchTask.skipped_documents }}
+                </span>
+                <span class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                  mode {{ documentStore.qaBatchTask.mode }}
+                </span>
+                <span class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-secondary)]">
+                  stop {{ documentStore.qaBatchTask.stop_requested ? 'true' : 'false' }}
+                </span>
+              </template>
+            </div>
+
+            <p v-if="documentStore.qaBatchTask?.message" class="mt-2 truncate text-[11px] text-[var(--color-text-secondary)]" :title="documentStore.qaBatchTask.message">
+              {{ documentStore.qaBatchTask.message }}
             </p>
-            <p v-if="documentStore.qaGenerationTask" class="text-xs text-[var(--color-text-secondary)]">
-              任务详情：status={{ documentStore.qaGenerationTask.status }} · stage={{ documentStore.qaGenerationTask.stage }} · total_generated_qas={{ documentStore.qaGenerationTask.total_generated_qas }}
-            </p>
+
+            <div v-if="documentStore.qaBatchTask?.items.length" class="mt-2 overflow-hidden rounded-md border border-[var(--color-border)]">
+              <div class="grid grid-cols-[minmax(0,1.8fr)_86px_56px_minmax(0,1.6fr)] gap-2 border-b border-[var(--color-border)] bg-[color:color-mix(in_srgb,var(--color-surface-strong)_35%,transparent)] px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">
+                <span>文档</span>
+                <span>状态</span>
+                <span>QA</span>
+                <span>错误</span>
+              </div>
+              <div class="max-h-44 overflow-auto">
+                <div
+                  v-for="item in documentStore.qaBatchTask.items"
+                  :key="`${documentStore.qaBatchTask.batch_task_id}-${item.document_id}`"
+                  class="grid grid-cols-[minmax(0,1.8fr)_86px_56px_minmax(0,1.6fr)] gap-2 border-b border-[var(--color-border)] px-2.5 py-1.5 text-[11px] last:border-b-0"
+                >
+                  <span class="truncate text-[var(--color-text-primary)]" :title="resolveDocumentLabel(item.document_id)">{{ resolveDocumentLabel(item.document_id) }}</span>
+                  <span>
+                    <span class="inline-flex rounded-md px-1.5 py-0.5" :class="qaBatchStatusClass(item.status)">
+                      {{ item.status }}
+                    </span>
+                  </span>
+                  <span>{{ item.generated_qas }}</span>
+                  <span class="truncate text-[var(--color-text-secondary)]" :title="item.error_message || ''">{{ item.error_message || '-' }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -294,7 +381,7 @@ import { useRoute, useRouter } from 'vue-router';
 import DocumentTable from '@/components/business/DocumentTable.vue';
 import DocumentUploadPanel from '@/components/business/DocumentUploadPanel.vue';
 import KnowledgeSectionTabs from '@/components/business/KnowledgeSectionTabs.vue';
-import { DOCUMENT_BATCH_SYNC_CONFIG } from '@/config';
+import { DOCUMENT_BATCH_SYNC_CONFIG, DOCUMENT_QA_BATCH_CONFIG } from '@/config';
 import { documentFileTypeOptions, useDocumentFilters } from '@/composables/useDocumentFilters';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDocumentStore } from '@/stores/document.store';
@@ -326,16 +413,14 @@ const qaForm = reactive<{
 const statsLoading = computed(() => documentStore.loading && documentStore.stats.document_count === 0);
 const canManage = computed(() => authStore.role === 'admin' || authStore.role === 'reviewer');
 const normalizedKnowledgeBase = computed(() => workspaceKnowledgeBase.value.trim() || 'default');
-
-const selectedDocument = computed(() => {
-  if (documentStore.selectedDocumentIds.length !== 1) {
-    return null;
-  }
-  const targetId = documentStore.selectedDocumentIds[0];
-  return documentStore.items.find((item) => item.document_id === targetId) ?? null;
+const documentNameById = computed(() => new Map(documentStore.items.map((item) => [item.document_id, item.file_name])));
+const selectedDocuments = computed(() => {
+  const itemMap = new Map(documentStore.items.map((item) => [item.document_id, item]));
+  return documentStore.selectedDocumentIds
+    .map((documentId) => itemMap.get(documentId))
+    .filter((item): item is KnowledgeDocument => Boolean(item));
 });
-
-const canOpenQaPanel = computed(() => canManage.value && documentStore.selectedCount === 1);
+const canOpenQaPanel = computed(() => canManage.value && documentStore.selectedCount > 0);
 
 const clearUploadFlag = async (): Promise<void> => {
   if (route.query.openUpload === undefined) {
@@ -397,9 +482,39 @@ const handleDownload = async (documentItem: KnowledgeDocument): Promise<void> =>
   await documentStore.download(documentItem);
 };
 
+const resolveDocumentLabel = (documentId: string): string =>
+  documentNameById.value.get(documentId) ?? documentId;
+
+const qaBatchStatusClass = (status: string): string => {
+  if (status === 'completed') {
+    return 'bg-[color:color-mix(in_srgb,var(--color-success)_14%,transparent)] text-[var(--color-success)]';
+  }
+
+  if (status === 'running' || status === 'processing') {
+    return 'bg-[color:color-mix(in_srgb,var(--color-primary)_14%,transparent)] text-[var(--color-primary)]';
+  }
+
+  if (status === 'failed' || status === 'partial_failed') {
+    return 'bg-[color:color-mix(in_srgb,var(--color-danger)_14%,transparent)] text-[var(--color-danger)]';
+  }
+
+  if (status === 'skipped') {
+    return 'bg-[color:color-mix(in_srgb,var(--color-warning)_14%,transparent)] text-[var(--color-warning)]';
+  }
+
+  return 'bg-[color:color-mix(in_srgb,var(--color-surface-strong)_44%,transparent)] text-[var(--color-text-secondary)]';
+};
+
+const handleClearSelection = (): void => {
+  documentStore.clearSelection();
+  showQaPanel.value = false;
+  qaError.value = '';
+};
+
 const handleSelectionChange = (ids: string[]): void => {
   documentStore.setSelectedDocumentIds(ids);
-  if (ids.length !== 1) {
+  qaError.value = '';
+  if (ids.length === 0) {
     showQaPanel.value = false;
   }
 };
@@ -443,8 +558,8 @@ const handleStartQaGeneration = async (): Promise<void> => {
     return;
   }
 
-  if (!selectedDocument.value) {
-    qaError.value = '请先选择一个文档';
+  if (selectedDocuments.value.length === 0) {
+    qaError.value = '请先选择至少一个文档';
     return;
   }
 
@@ -454,7 +569,7 @@ const handleStartQaGeneration = async (): Promise<void> => {
   }
 
   if (qaForm.mode === 'replace') {
-    const confirmed = window.confirm('replace 模式会先删除该文档已有 QA，再重新生成。是否继续？');
+    const confirmed = window.confirm(`replace 模式会先删除所选 ${selectedDocuments.value.length} 个文档已有 QA，再重新生成。是否继续？`);
     if (!confirmed) {
       return;
     }
@@ -462,13 +577,18 @@ const handleStartQaGeneration = async (): Promise<void> => {
 
   qaSubmitting.value = true;
   try {
-    const result = await documentStore.triggerQaGeneration({
-      document_id: selectedDocument.value.document_id,
+    const result = await documentStore.triggerQaBatchGeneration({
+      document_ids: [...documentStore.selectedDocumentIds],
       target_count: qaForm.target_count,
-      mode: qaForm.mode
+      mode: qaForm.mode,
+      fail_fast: DOCUMENT_QA_BATCH_CONFIG.fail_fast
     });
-    await documentStore.pollQaGenerationTask(result.task_id);
+
     showQaPanel.value = false;
+    await documentStore.pollQaBatchGenerationTask(result.batch_task_id, {
+      intervalMs: DOCUMENT_QA_BATCH_CONFIG.polling_interval_ms,
+      maxPolls: DOCUMENT_QA_BATCH_CONFIG.max_polls
+    });
   } catch {
     qaError.value = documentStore.error || '触发 QA 生成失败';
   } finally {
